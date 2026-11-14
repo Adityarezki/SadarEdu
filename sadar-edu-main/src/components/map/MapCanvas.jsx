@@ -16,52 +16,70 @@ const schoolLayerStyle = {
   id: "schools-layer",
   type: "circle",
   paint: {
-    "circle-radius": ["interpolate", ["linear"], ["zoom"], 8, 3.5, 12, 6, 16, 9],
-    "circle-color": ["match", ["get", "status"], "Negeri", "#1F6F5F", "Swasta", "#F59E0B", "#64748B"],
-    "circle-stroke-width": 1.5,
+    "circle-radius": ["interpolate", ["linear"], ["zoom"], 8, 4, 11, 5.5, 14, 7.5, 16, 9.5],
+    "circle-color": ["match", ["get", "status"], "Negeri", "#0f766e", "Swasta", "#d97706", "#64748B"],
+    "circle-stroke-width": 1.75,
     "circle-stroke-color": "#ffffff",
   },
 };
 
-// Polygon diletakkan di slot "middle" Mapbox Standard agar label jalan/tempat tetap di atasnya
+const clusterCirclePaint = {
+  "circle-color": ["step", ["get", "point_count"], "#1f6f5f", 20, "#175649", 50, "#134e4a"],
+  "circle-radius": ["step", ["get", "point_count"], 15, 20, 19, 50, 23],
+  "circle-stroke-width": 2.5,
+  "circle-stroke-color": "rgba(255, 255, 255, 0.92)",
+  "circle-opacity": 0.92,
+};
+
+const clusterCountLayout = {
+  "text-field": ["get", "point_count_abbreviated"],
+  "text-size": 11,
+};
+
+// Polygon diletakkan di slot "middle" Mapbox Standard agar label jalan/tempat tetap terbaca jelas di atasnya
 const wilayahFill = {
   id: "wilayah-fill",
   type: "fill",
   slot: "middle",
-  paint: { "fill-color": ["get", "color"], "fill-opacity": 0.5 },
+  paint: { "fill-color": ["get", "color"], "fill-opacity": 0.38 },
 };
 const wilayahLine = {
   id: "wilayah-line",
   type: "line",
   slot: "middle",
-  paint: { "line-color": "#ffffff", "line-width": 1.2 },
+  paint: { "line-color": "#334155", "line-width": 0.9, "line-opacity": 0.45 },
 };
 const wilayahSelected = (id) => ({
   id: "wilayah-selected",
   type: "line",
   slot: "middle",
-  // Dashboard memakai ID angka; eksplorasi geografis memakai ID geo:*.
   filter: ["==", ["get", "id"], id == null ? -1 : Number.isFinite(Number(id)) ? Number(id) : id],
-  paint: { "line-color": "#0f172a", "line-width": 3 },
+  paint: { "line-color": "#0f172a", "line-width": 2.8, "line-opacity": 0.95 },
 });
 
 const blankFill = {
   id: "blank-fill",
   type: "fill",
   slot: "middle",
-  paint: { "fill-color": "#ef4444", "fill-opacity": 0.22 },
+  paint: { "fill-color": "#1e3a8a", "fill-opacity": 0.06 },
 };
 const blankLine = {
   id: "blank-line",
   type: "line",
   slot: "middle",
-  paint: { "line-color": "#b91c1c", "line-width": 1, "line-dasharray": [2, 2] },
+  paint: { "line-color": "#1e3a8a", "line-width": 1.6, "line-dasharray": [3, 2], "line-opacity": 0.75 },
 };
 const coverageFill = {
   id: "coverage-fill",
   type: "fill",
   slot: "middle",
-  paint: { "fill-color": "#2563eb", "fill-opacity": 0.1 },
+  paint: { "fill-color": "#0284c7", "fill-opacity": 0.1 },
+};
+const coverageLine = {
+  id: "coverage-line",
+  type: "line",
+  slot: "middle",
+  paint: { "line-color": "#0369a1", "line-width": 1.2, "line-opacity": 0.6 },
 };
 
 const candidateFill = {
@@ -70,77 +88,126 @@ const candidateFill = {
   slot: "top",
   paint: {
     "fill-color": ["match", ["get", "status"], "Disetujui", "#16a34a", "Dipertimbangkan", "#0ea5e9", "Ditolak", "#94a3b8", "#7c3aed"],
-    "fill-opacity": 0.55,
+    "fill-opacity": 0.5,
   },
 };
 const candidateLine = {
   id: "candidate-line",
   type: "line",
   slot: "top",
-  paint: { "line-color": "#ffffff", "line-width": 2 },
+  paint: { "line-color": "#ffffff", "line-width": 1.75 },
 };
 const candidateSelected = (id) => ({
   id: "candidate-selected",
   type: "line",
   slot: "top",
   filter: ["==", ["get", "id"], id === null ? -1 : Number(id)],
-  paint: { "line-color": "#0f172a", "line-width": 3.5 },
+  paint: { "line-color": "#0f172a", "line-width": 3 },
 });
 
-export default function MapCanvas({ onMapLoaded, schools, publicExplorer = false, publicLayers, panelOpen = false, onOpenLayers, onSchoolSelect, population, publicBlankSpots, publicNeeds, onDistrictSelect, selectedPopulationId }) {
+export default function MapCanvas({
+  onMapLoaded,
+  schools,
+  publicExplorer = false,
+  publicLayers,
+  panelOpen = false,
+  onOpenLayers,
+  onSchoolSelect,
+  population,
+  publicBlankSpots,
+  publicNeeds,
+  onDistrictSelect,
+  selectedPopulationId,
+}) {
   const mapRef = useRef();
   const [populationPopup, setPopulationPopup] = useState(null);
+  const [, setStyleTick] = useState(0);
   const publishedCamera = useRef(null);
   const initiallyFitted = useRef(false);
   const cameraPadding = useCallback(() => {
-    if (!publicExplorer) return { top: 90, bottom: 60, left: 440, right: 60 };
+    if (!publicExplorer) return { top: 90, bottom: 60, left: 460, right: 60 };
     const mobile = window.innerWidth < 768;
     return { top: 110, bottom: mobile && panelOpen ? Math.round(window.innerHeight * 0.48) : 70, left: !mobile && panelOpen ? 390 : 40, right: 60 };
   }, [publicExplorer, panelOpen]);
 
-  const { viewState, setViewState, activeLayers: storedLayers, selectedFeature, setSelectedFeature, addToCompare, comparedSchools, pendingBounds,
-    selectedWilayahId, setSelectedWilayahId, selectedCandidateId, setSelectedCandidateId } = useMapStore();
+  const {
+    viewState,
+    setViewState,
+    activeLayers: storedLayers,
+    selectedFeature,
+    setSelectedFeature,
+    addToCompare,
+    comparedSchools,
+    pendingBounds,
+    selectedWilayahId,
+    setSelectedWilayahId,
+    selectedCandidateId,
+    setSelectedCandidateId,
+  } = useMapStore();
   const activeLayers = publicLayers || storedLayers;
   const districtHover = useDistrictHover({
     enabled: publicExplorer && (activeLayers?.populationLayer || activeLayers?.mcdaLayer),
     population,
     popupOpen: Boolean(selectedFeature || (activeLayers?.populationLayer && populationPopup)),
   });
-  const mapConfig = useMemo(() => ({ basemap: { lightPreset: "day", show3dObjects: activeLayers?.show3DBuildings !== false } }), [activeLayers?.show3DBuildings]);
-  const syncViewState = useCallback((event) => {
-    publishedCamera.current = event.viewState;
-    setViewState(event.viewState);
-  }, [setViewState]);
+  const mapConfig = useMemo(() => ({ basemap: { lightPreset: "day", show3dObjects: Boolean(activeLayers?.show3DBuildings) } }), [activeLayers?.show3DBuildings]);
+  const syncViewState = useCallback(
+    (event) => {
+      publishedCamera.current = event.viewState;
+      setViewState(event.viewState);
+    },
+    [setViewState]
+  );
 
   // Mapbox owns animation frames; publish the camera only when movement ends.
   useEffect(() => {
-    if (!publicExplorer || !mapRef.current || viewState === publishedCamera.current) return;
+    if (!mapRef.current || viewState === publishedCamera.current) return;
     const map = mapRef.current.getMap();
     const center = map.getCenter();
-    if (Math.abs(center.lng - viewState.longitude) < 1e-7 && Math.abs(center.lat - viewState.latitude) < 1e-7 && Math.abs(map.getZoom() - viewState.zoom) < 1e-7) return;
-    map.easeTo({ center: [viewState.longitude, viewState.latitude], zoom: viewState.zoom, bearing: viewState.bearing, pitch: 0, duration: viewState.transitionDuration || 0 });
-  }, [publicExplorer, viewState]);
-  const { prioritas, meta, weights, sekolah, blankSpots, coverage, candidates } = useDataStore();
-  const displayedBlankSpots = publicExplorer && publicBlankSpots ? publicBlankSpots : blankSpots;
-  // Ringankan data Mapbox tanpa menggabungkan jumlah penduduk dengan skor MCDA.
-  const populationGeoJson = useMemo(() => ({
-    type: 'FeatureCollection',
-    features: (population?.features || []).map((feature) => ({ ...feature,
-      properties: { ...feature.properties, color: populationColor(feature.properties.penduduk) },
-    })),
-  }), [population]);
+    if (
+      Math.abs(center.lng - viewState.longitude) < 1e-7 &&
+      Math.abs(center.lat - viewState.latitude) < 1e-7 &&
+      Math.abs(map.getZoom() - viewState.zoom) < 1e-7
+    )
+      return;
+    map.easeTo({
+      center: [viewState.longitude, viewState.latitude],
+      zoom: viewState.zoom,
+      bearing: viewState.bearing || 0,
+      pitch: 0,
+      duration: viewState.transitionDuration || 0,
+    });
+  }, [viewState]);
 
-  // Skor dihitung ulang di klien dengan bobot dari slider -> peta berubah seketika
+  const { prioritas, meta, weights, sekolah, blankSpots, coverage, candidates, kecamatan } = useDataStore();
+  const displayedBlankSpots = publicExplorer && publicBlankSpots ? publicBlankSpots : blankSpots;
+
+  const populationGeoJson = useMemo(
+    () => ({
+      type: "FeatureCollection",
+      features: (population?.features || []).map((feature) => ({
+        ...feature,
+        properties: { ...feature.properties, color: populationColor(feature.properties.penduduk) },
+      })),
+    }),
+    [population]
+  );
+
   const wilayahGeoJson = useMemo(() => {
-    // Skor pratinjau sudah dihitung backend pada geometri baru, bukan skor poligon demo lama.
-    if (publicExplorer && publicNeeds) return {
-      type: 'FeatureCollection',
-      features: publicNeeds.features.map((feature) => ({ ...feature, properties: {
-        id: feature.properties.id_wilayah, nama: feature.properties.nama_wilayah,
-        skor: feature.properties.skor_total, kategori: feature.properties.kategori_prioritas,
-        color: colorOf(feature.properties.kategori_prioritas),
-      } })),
-    };
+    if (publicExplorer && publicNeeds)
+      return {
+        type: "FeatureCollection",
+        features: publicNeeds.features.map((feature) => ({
+          ...feature,
+          properties: {
+            id: feature.properties.id_wilayah,
+            nama: feature.properties.nama_wilayah,
+            skor: feature.properties.skor_total,
+            kategori: feature.properties.kategori_prioritas,
+            color: colorOf(feature.properties.kategori_prioritas),
+          },
+        })),
+      };
     const scored = rescoreFeatures(prioritas.features, weights, meta && meta.kategori);
     return {
       type: "FeatureCollection",
@@ -159,60 +226,149 @@ export default function MapCanvas({ onMapLoaded, schools, publicExplorer = false
     };
   }, [prioritas, weights, meta, publicExplorer, publicNeeds]);
 
+  // Spotlight spasial: ketika satu kecamatan dipilih, kecamatan lain diredupkan agar fokus visual tajam
+  const activeDistrictKey = publicExplorer ? selectedPopulationId : selectedWilayahId;
+  const wilayahFillPaint = useMemo(() => {
+    if (!activeDistrictKey) {
+      return {
+        "fill-color": ["get", "color"],
+        "fill-opacity": publicExplorer ? 0.55 : 0.38,
+      };
+    }
+    const targetVal = Number.isFinite(Number(activeDistrictKey)) ? Number(activeDistrictKey) : String(activeDistrictKey);
+    return {
+      "fill-color": ["get", "color"],
+      "fill-opacity": ["case", ["==", ["get", "id"], targetVal], 0.52, 0.13],
+    };
+  }, [activeDistrictKey, publicExplorer]);
+
   const candidateGeoJson = useMemo(
     () => ({
       type: "FeatureCollection",
       features: candidates.features.map((f) => ({
         type: "Feature",
         geometry: f.geometry,
-        properties: { id: f.properties.id_candidate, skor: f.properties.skor_suitability, status: f.properties.status_kandidat, nama: f.properties.nama_wilayah },
+        properties: {
+          id: f.properties.id_candidate,
+          id_wilayah: f.properties.id_wilayah,
+          skor: f.properties.skor_suitability,
+          status: f.properties.status_kandidat,
+          nama: f.properties.nama_wilayah,
+        },
       })),
     }),
     [candidates]
   );
 
   const schoolData = schools || sekolah;
-  const schoolsById = useMemo(() => new Map(schoolData.features.map((feature) => [String(feature.properties.id), feature])), [schoolData]);
-  const renderedSchoolData = useMemo(() => publicExplorer ? {
-    type: "FeatureCollection",
-    features: schoolData.features.map((feature) => ({ type: "Feature", geometry: feature.geometry, properties: { id: feature.properties.id, status: feature.properties.status } })),
-  } : schoolData, [publicExplorer, schoolData]);
+  const schoolsById = useMemo(
+    () => new Map(schoolData.features.map((feature) => [String(feature.properties.id), feature])),
+    [schoolData]
+  );
+
+  // Di halaman Stakeholder: jika ada kecamatan yang sedang dipilih, fokuskan titik sekolah pada kecamatan tersebut
+  const selectedWilayahName = useMemo(() => {
+    if (publicExplorer || !selectedWilayahId) return null;
+    const found = kecamatan.find((k) => String(k.id) === String(selectedWilayahId));
+    return found?.name ? found.name.toLowerCase().replace(/\s+/g, "") : null;
+  }, [publicExplorer, selectedWilayahId, kecamatan]);
+
+  const renderedSchoolData = useMemo(() => {
+    let list = schoolData.features;
+    if (!publicExplorer && selectedWilayahId) {
+      const targetId = String(selectedWilayahId);
+      const filtered = list.filter((f) => {
+        const p = f.properties || {};
+        if (p.id_wilayah && String(p.id_wilayah) === targetId) return true;
+        if (selectedWilayahName && p.kecamatan) {
+          return p.kecamatan.toLowerCase().replace(/\s+/g, "") === selectedWilayahName;
+        }
+        return false;
+      });
+      if (filtered.length > 0) list = filtered;
+    }
+    return {
+      type: "FeatureCollection",
+      features: list.map((feature) => ({
+        type: "Feature",
+        geometry: feature.geometry,
+        properties: {
+          id: feature.properties.id,
+          status: feature.properties.status === "Negeri" ? "Negeri" : "Swasta",
+        },
+      })),
+    };
+  }, [schoolData, publicExplorer, selectedWilayahId, selectedWilayahName]);
 
   const fitPublicSchools = useCallback(() => {
-    if (!publicExplorer || initiallyFitted.current || !mapRef.current) return;
+    if (initiallyFitted.current || !mapRef.current) return;
     mapRef.current.fitBounds(BOGOR_BOUNDS, { padding: cameraPadding(), duration: 0, maxZoom: 11, retainPadding: false });
     initiallyFitted.current = true;
-  }, [publicExplorer, cameraPadding]);
-  useEffect(() => { fitPublicSchools(); }, [fitPublicSchools]);
+  }, [cameraPadding]);
+  useEffect(() => {
+    fitPublicSchools();
+  }, [fitPublicSchools]);
 
   const onMapLoad = useCallback(
     (evt) => {
-      evt.target.setConfigProperty("basemap", "show3dObjects", activeLayers?.show3DBuildings !== false);
+      try {
+        evt.target.setConfigProperty("basemap", "show3dObjects", Boolean(activeLayers?.show3DBuildings));
+      } catch {
+        // Ignore if style does not support basemap config
+      }
+      evt.target.fire("styledata");
+      setStyleTick((t) => t + 1);
       fitPublicSchools();
       if (typeof onMapLoaded === "function") onMapLoaded();
     },
-    [activeLayers?.show3DBuildings, onMapLoaded, fitPublicSchools]
+    [activeLayers, onMapLoaded, fitPublicSchools]
   );
 
   useEffect(() => {
     if (!mapRef.current) return;
     const map = mapRef.current.getMap();
-    if (map.isStyleLoaded()) map.setConfigProperty("basemap", "show3dObjects", activeLayers?.show3DBuildings !== false);
+    if (map && map.isStyleLoaded()) {
+      map.fire("styledata");
+    }
+  }, [
+    wilayahGeoJson.features.length,
+    renderedSchoolData.features.length,
+    displayedBlankSpots.features.length,
+    coverage.features.length,
+    candidateGeoJson.features.length,
+    activeLayers,
+    selectedWilayahId,
+  ]);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const map = mapRef.current.getMap();
+    if (map.isStyleLoaded()) {
+      try {
+        map.setConfigProperty("basemap", "show3dObjects", Boolean(activeLayers?.show3DBuildings));
+      } catch {
+        // Ignore
+      }
+    }
   }, [activeLayers?.show3DBuildings, publicExplorer]);
 
-  // Permintaan fitBounds dari panel (pilih kecamatan / pilih kandidat)
   useEffect(() => {
     if (!pendingBounds || !mapRef.current) return;
     const [minLng, minLat, maxLng, maxLat] = pendingBounds.bbox;
     mapRef.current.getMap().fitBounds(
-      [[minLng, minLat], [maxLng, maxLat]],
-      { padding: cameraPadding(), duration: 1000, maxZoom: 14 }
+      [
+        [minLng, minLat],
+        [maxLng, maxLat],
+      ],
+      { padding: cameraPadding(), duration: 950, maxZoom: 14 }
     );
   }, [pendingBounds, cameraPadding]);
 
   const interactiveLayerIds = useMemo(() => {
     const ids = [];
-    if (activeLayers?.showSchools) { ids.push("schools-layer"); if (publicExplorer) ids.push("school-clusters"); }
+    if (activeLayers?.showSchools) {
+      ids.push("schools-layer", "school-clusters");
+    }
     if (activeLayers?.showCandidates && candidates.features.length) ids.push("candidate-fill");
     if (activeLayers?.mcdaLayer) ids.push("wilayah-fill");
     if (publicExplorer && activeLayers?.populationLayer && populationGeoJson.features.length) ids.push("population-fill");
@@ -226,8 +382,12 @@ export default function MapCanvas({ onMapLoaded, schools, publicExplorer = false
         setSelectedFeature(null);
         return;
       }
-      // Titik sekolah harus tetap menang ketika poligon penduduk berada di bawahnya.
-      const feature = event.features?.find((item) => ['schools-layer', 'school-clusters'].includes(item.layer.id)) || event.features?.[0];
+      // Prioritaskan klik titik/cluster sekolah, lalu kandidat, baru poligon kecamatan
+      const feature =
+        event.features?.find((item) => ["schools-layer", "school-clusters"].includes(item.layer.id)) ||
+        event.features?.find((item) => item.layer.id === "candidate-fill") ||
+        event.features?.[0];
+
       if (!feature) {
         setSelectedFeature(null);
         return;
@@ -235,25 +395,70 @@ export default function MapCanvas({ onMapLoaded, schools, publicExplorer = false
       if (feature.layer.id === "school-clusters") {
         setSelectedFeature(null);
         const source = mapRef.current.getMap().getSource("schools-source");
-        source.getClusterExpansionZoom(feature.properties.cluster_id, (error, zoom) => {
-          if (!error) mapRef.current?.getMap().easeTo({ center: feature.geometry.coordinates, zoom, padding: cameraPadding(), duration: 450, retainPadding: false });
-        });
+        if (source && typeof source.getClusterExpansionZoom === "function") {
+          source.getClusterExpansionZoom(feature.properties.cluster_id, (error, zoom) => {
+            if (!error) {
+              mapRef.current?.getMap().easeTo({
+                center: feature.geometry.coordinates,
+                zoom: Math.min(zoom + 0.5, 15),
+                padding: cameraPadding(),
+                duration: 450,
+                retainPadding: false,
+              });
+            }
+          });
+        }
       } else if (feature.layer.id === "schools-layer") {
         const [longitude, latitude] = feature.geometry.coordinates;
-        setSelectedFeature({ longitude, latitude, properties: schoolsById.get(String(feature.properties.id))?.properties || feature.properties });
+        setSelectedFeature({
+          longitude,
+          latitude,
+          properties: schoolsById.get(String(feature.properties.id))?.properties || feature.properties,
+        });
       } else if (feature.layer.id === "candidate-fill") {
         setSelectedFeature(null);
         setSelectedCandidateId(feature.properties.id);
+        if (feature.properties.id_wilayah) setSelectedWilayahId(feature.properties.id_wilayah);
       } else if (feature.layer.id === "wilayah-fill") {
         setSelectedFeature(null);
-        if (publicExplorer && onDistrictSelect) onDistrictSelect(feature.properties.id);
-        else setSelectedWilayahId(feature.properties.id);
+        if (publicExplorer && onDistrictSelect) {
+          onDistrictSelect(feature.properties.id);
+        } else {
+          // Klik ulang kecamatan yang sama akan melepas spotlight kembali ke seluruh Bogor
+          const clickedId = String(feature.properties.id);
+          if (selectedWilayahId && String(selectedWilayahId) === clickedId) {
+            setSelectedWilayahId(null);
+          } else {
+            setSelectedWilayahId(feature.properties.id);
+            const k = kecamatan.find((x) => String(x.id) === clickedId);
+            if (k && k.bbox && mapRef.current) {
+              const [minLng, minLat, maxLng, maxLat] = k.bbox;
+              mapRef.current.getMap().fitBounds(
+                [
+                  [minLng, minLat],
+                  [maxLng, maxLat],
+                ],
+                { padding: cameraPadding(), duration: 850, maxZoom: 13.5 }
+              );
+            }
+          }
+        }
       } else if (feature.layer.id === "population-fill") {
         setSelectedFeature(null);
         setPopulationPopup({ longitude: event.lngLat.lng, latitude: event.lngLat.lat, properties: feature.properties });
       }
     },
-    [setSelectedFeature, setSelectedWilayahId, setSelectedCandidateId, cameraPadding, schoolsById, publicExplorer, onDistrictSelect]
+    [
+      setSelectedFeature,
+      setSelectedWilayahId,
+      setSelectedCandidateId,
+      cameraPadding,
+      schoolsById,
+      publicExplorer,
+      onDistrictSelect,
+      selectedWilayahId,
+      kecamatan,
+    ]
   );
 
   const setCursor = useCallback((cursor) => {
@@ -275,106 +480,147 @@ export default function MapCanvas({ onMapLoaded, schools, publicExplorer = false
 
   return (
     <div className="absolute inset-0 w-full h-full">
-      {publicExplorer && <div className="explorer-map-tools" aria-label="Alat peta">
-        <button title="Tampilkan semua hasil" aria-label="Tampilkan semua hasil" onClick={() => { initiallyFitted.current = false; fitPublicSchools(); }}><LocateFixed size={19} /></button>
-        <button title="Lapisan peta" aria-label="Lapisan peta" onClick={onOpenLayers}><Layers size={19} /></button>
-      </div>}
+      {publicExplorer && (
+        <div className="explorer-map-tools" aria-label="Alat peta">
+          <button
+            title="Tampilkan semua hasil"
+            aria-label="Tampilkan semua hasil"
+            onClick={() => {
+              initiallyFitted.current = false;
+              fitPublicSchools();
+            }}
+          >
+            <LocateFixed size={19} />
+          </button>
+          <button title="Lapisan peta" aria-label="Lapisan peta" onClick={onOpenLayers}>
+            <Layers size={19} />
+          </button>
+        </div>
+      )}
       <MapView
         ref={mapRef}
-        {...(publicExplorer ? { initialViewState: { ...viewState, pitch: 0 } } : viewState)}
-        onMove={publicExplorer ? undefined : syncViewState}
-        onMoveEnd={publicExplorer ? syncViewState : undefined}
+        initialViewState={{ ...viewState, pitch: 0 }}
+        onMoveEnd={syncViewState}
         mapStyle="mapbox://styles/mapbox/standard"
         config={mapConfig}
         mapboxAccessToken={MAPBOX_TOKEN}
         onLoad={onMapLoad}
-        terrain={publicExplorer ? undefined : { source: "mapbox-dem", exaggeration: 1.2 }}
-        maxBounds={publicExplorer ? BOGOR_BOUNDS : undefined}
-        projection={publicExplorer ? "mercator" : undefined}
-        maxPitch={publicExplorer ? 0 : undefined}
+        onStyleData={() => setStyleTick((t) => t + 1)}
+        projection="mercator"
+        maxPitch={0}
+        minZoom={8}
+        {...(publicExplorer ? { maxBounds: BOGOR_BOUNDS, onMouseMove: districtHover.move } : {})}
         renderWorldCopies={!publicExplorer}
-        minZoom={publicExplorer ? 8 : undefined}
         interactiveLayerIds={interactiveLayerIds}
-        onClick={(event) => { districtHover.hide(); onMapClick(event); }}
-        onMouseMove={publicExplorer ? districtHover.move : undefined}
+        onClick={(event) => {
+          districtHover.hide();
+          onMapClick(event);
+        }}
         onMoveStart={districtHover.hide}
         onMouseEnter={() => setCursor("pointer")}
-        onMouseLeave={() => { setCursor(""); districtHover.hide(); }}
-        reuseMaps
+        onMouseLeave={() => {
+          setCursor("");
+          districtHover.hide();
+        }}
       >
-        <NavigationControl position={publicExplorer ? "top-right" : "bottom-right"} showCompass={!publicExplorer} visualizePitch={!publicExplorer} />
-
-        {!publicExplorer && <Source id="mapbox-dem" type="raster-dem" url="mapbox://mapbox.mapbox-terrain-dem-v1" tileSize={512} maxzoom={14} />}
+        <NavigationControl position={publicExplorer ? "top-right" : "bottom-right"} showCompass={false} visualizePitch={false} />
 
         {activeLayers?.showCoverage && coverage.features.length > 0 && (
-          <Source id="coverage-source" type="geojson" data={coverage}>
+          <Source id="coverage-source" type="geojson" data={coverage} tolerance={0}>
             <Layer {...coverageFill} />
+            <Layer {...coverageLine} />
           </Source>
         )}
 
         {publicExplorer && activeLayers?.populationLayer && populationGeoJson.features.length > 0 && (
           <Source id="population-source" type="geojson" data={populationGeoJson} tolerance={0}>
-            <Layer id="population-fill" type="fill" slot="middle" paint={{ 'fill-color': ['get', 'color'], 'fill-opacity': 0.68 }} />
-            <Layer id="population-line" type="line" slot="middle" paint={{ 'line-color': '#58746b', 'line-width': 0.8, 'line-opacity': 0.7 }} />
-            <Layer id="population-selected" type="line" slot="middle" filter={['==', ['get', 'id'], selectedPopulationId || '']} paint={{ 'line-color': '#173f35', 'line-width': 2.5 }} />
+            <Layer id="population-fill" type="fill" slot="middle" paint={{ "fill-color": ["get", "color"], "fill-opacity": 0.62 }} />
+            <Layer id="population-line" type="line" slot="middle" paint={{ "line-color": "#58746b", "line-width": 0.8, "line-opacity": 0.65 }} />
+            <Layer id="population-selected" type="line" slot="middle" filter={["==", ["get", "id"], selectedPopulationId || ""]} paint={{ "line-color": "#173f35", "line-width": 2.5 }} />
           </Source>
         )}
 
         {activeLayers?.mcdaLayer && wilayahGeoJson.features.length > 0 && (
-          // Coverage sudah disederhanakan bersama di pipeline; hindari simplifikasi ulang per tile.
-          <Source id="wilayah-source" type="geojson" data={wilayahGeoJson} tolerance={publicExplorer ? 0 : undefined}>
-            {/* Opasitas publik lebih kuat supaya kategori tidak larut pada warna basemap. */}
-            <Layer {...wilayahFill} paint={publicExplorer ? { ...wilayahFill.paint, 'fill-opacity': 0.68 } : wilayahFill.paint} />
+          <Source id="wilayah-source" type="geojson" data={wilayahGeoJson} tolerance={0}>
+            <Layer {...wilayahFill} paint={wilayahFillPaint} />
             <Layer {...wilayahLine} />
-            <Layer {...wilayahSelected(publicExplorer ? selectedPopulationId : selectedWilayahId)} />
+            <Layer {...wilayahSelected(activeDistrictKey)} />
           </Source>
         )}
 
         {activeLayers?.showBlankSpots && displayedBlankSpots.features.length > 0 && (
-          <Source id="blank-source" type="geojson" data={displayedBlankSpots}>
-            {/* Overlay akses dibedakan dari merah kebutuhan agar arti dua lapisan tidak bercampur. */}
-            <Layer {...blankFill} paint={publicExplorer ? { 'fill-color': '#1e3a8a', 'fill-opacity': 0.04 } : blankFill.paint} />
-            <Layer {...blankLine} paint={publicExplorer ? { 'line-color': '#1e3a8a', 'line-width': 1.8, 'line-dasharray': [3, 2] } : blankLine.paint} />
+          <Source id="blank-source" type="geojson" data={displayedBlankSpots} tolerance={0}>
+            <Layer {...blankFill} />
+            <Layer {...blankLine} />
           </Source>
         )}
 
         {activeLayers?.showCandidates && candidateGeoJson.features.length > 0 && (
-          <Source id="candidate-source" type="geojson" data={candidateGeoJson}>
+          <Source id="candidate-source" type="geojson" data={candidateGeoJson} tolerance={0}>
             <Layer {...candidateFill} />
             <Layer {...candidateLine} />
             <Layer {...candidateSelected(selectedCandidateId)} />
           </Source>
         )}
 
-        {activeLayers?.showSchools && (
-          <Source id="schools-source" type="geojson" data={renderedSchoolData} cluster={publicExplorer} clusterMaxZoom={12} clusterRadius={42}>
-            {publicExplorer && <Layer id="school-clusters" type="circle" filter={["has", "point_count"]} paint={{ "circle-color": "#1f6f5f", "circle-radius": ["step", ["get", "point_count"], 18, 25, 23, 100, 29], "circle-stroke-width": 3, "circle-stroke-color": "#fff" }} />}
-            {publicExplorer && <Layer id="school-cluster-count" type="symbol" filter={["has", "point_count"]} layout={{ "text-field": ["get", "point_count_abbreviated"], "text-size": 12 }} paint={{ "text-color": "#fff" }} />}
-            <Layer {...schoolLayerStyle} filter={publicExplorer ? UNCLUSTERED : undefined} />
+        {activeLayers?.showSchools && renderedSchoolData.features.length > 0 && (
+          <Source
+            id="schools-source"
+            type="geojson"
+            data={renderedSchoolData}
+            cluster={true}
+            clusterMaxZoom={12}
+            clusterRadius={publicExplorer ? 42 : 52}
+          >
+            <Layer id="school-clusters" type="circle" filter={["has", "point_count"]} paint={clusterCirclePaint} />
+            <Layer id="school-cluster-count" type="symbol" filter={["has", "point_count"]} layout={clusterCountLayout} paint={{ "text-color": "#ffffff" }} />
+            <Layer {...schoolLayerStyle} filter={UNCLUSTERED} />
           </Source>
         )}
 
-        {publicExplorer &&
-          <Source id="bogor-boundary" type="geojson" data={BOGOR_BOUNDARY} tolerance={0} attribution='<a href="https://kspservices.big.go.id/satupeta/rest/services/PUBLIK/BATAS_WILAYAH/MapServer/3">Batas: BIG (2022)</a>'>
-            <Layer id="bogor-boundary-line" type="line" paint={{ "line-color": "#1f6f5f", "line-width": 1.5, "line-opacity": 0.8 }} />
-          </Source>
-        }
+        <Source
+          id="bogor-boundary"
+          type="geojson"
+          data={BOGOR_BOUNDARY}
+          tolerance={0}
+          attribution='<a href="https://kspservices.big.go.id/satupeta/rest/services/PUBLIK/BATAS_WILAYAH/MapServer/3">Batas: BIG (2022)</a>'
+        >
+          <Layer id="bogor-boundary-line" type="line" paint={{ "line-color": "#1f6f5f", "line-width": 1.6, "line-opacity": 0.75 }} />
+        </Source>
 
-        {/* Lubang pada batas kabupaten mengikuti perimeter kota; keduanya tetap terlihat. */}
-        {publicExplorer && <Source id="bogor-administrative-boundary" type="geojson" data={kabupatenBoundary} tolerance={0}>
-          <Layer id="bogor-administrative-line" type="line" paint={{ 'line-color': '#234f42', 'line-width': 1.6, 'line-opacity': 0.85 }} />
-        </Source>}
+        {publicExplorer && (
+          <Source id="bogor-administrative-boundary" type="geojson" data={kabupatenBoundary} tolerance={0}>
+            <Layer id="bogor-administrative-line" type="line" paint={{ "line-color": "#234f42", "line-width": 1.4, "line-opacity": 0.75 }} />
+          </Source>
+        )}
 
         {publicExplorer && activeLayers?.populationLayer && populationPopup && !selectedFeature && (
-          <Popup className="school-preview-popup" maxWidth="280px" longitude={populationPopup.longitude} latitude={populationPopup.latitude} closeOnClick={false} onClose={() => setPopulationPopup(null)}>
+          <Popup
+            className="school-preview-popup"
+            maxWidth="280px"
+            longitude={populationPopup.longitude}
+            latitude={populationPopup.latitude}
+            closeOnClick={false}
+            onClose={() => setPopulationPopup(null)}
+          >
             <section className="school-preview" aria-label="Penduduk kecamatan">
               <h3>{populationPopup.properties.nama}</h3>
               <p>{populationPopup.properties.kabupaten_kota}</p>
-              <strong>{new Intl.NumberFormat('id-ID').format(populationPopup.properties.penduduk)} jiwa</strong>
+              <strong>{new Intl.NumberFormat("id-ID").format(populationPopup.properties.penduduk)} jiwa</strong>
               <p>Tahun {populationPopup.properties.tahun} · Jumlah penduduk total</p>
               <div className="school-preview-actions">
-                <a href={populationPopup.properties.sumber_penduduk} target="_blank" rel="noreferrer">Sumber BPS ↗</a>
-                <button className="school-preview-profile" onClick={() => { onDistrictSelect?.(populationPopup.properties.id); setPopulationPopup(null); }}>Lihat sekolah <ArrowRight size={14} /></button>
+                <a href={populationPopup.properties.sumber_penduduk} target="_blank" rel="noreferrer">
+                  Sumber BPS ↗
+                </a>
+                <button
+                  className="school-preview-profile"
+                  onClick={() => {
+                    onDistrictSelect?.(populationPopup.properties.id);
+                    setPopulationPopup(null);
+                  }}
+                >
+                  Lihat sekolah <ArrowRight size={14} />
+                </button>
               </div>
             </section>
           </Popup>
@@ -395,46 +641,96 @@ export default function MapCanvas({ onMapLoaded, schools, publicExplorer = false
             {publicExplorer ? (
               <section className="school-preview" aria-label="Pratinjau sekolah">
                 <h3>{selectedFeature.properties.nama}</h3>
-                <p>{[selectedFeature.properties.status, selectedFeature.properties.kecamatan && `Kec. ${selectedFeature.properties.kecamatan}`].filter(Boolean).join(" · ")}</p>
+                <p>
+                  {[selectedFeature.properties.status, selectedFeature.properties.kecamatan && `Kec. ${selectedFeature.properties.kecamatan}`]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
                 <div className="school-preview-actions">
-                  <button className="school-preview-profile" onClick={() => {
-                    const school = schoolsById.get(String(selectedFeature.properties.id));
-                    onSchoolSelect?.(school || { type: "Feature", geometry: { type: "Point", coordinates: [selectedFeature.longitude, selectedFeature.latitude] }, properties: selectedFeature.properties });
-                  }}>Lihat profil <ArrowRight size={14} /></button>
-                  <button className="school-preview-compare"
+                  <button
+                    className="school-preview-profile"
+                    onClick={() => {
+                      const school = schoolsById.get(String(selectedFeature.properties.id));
+                      onSchoolSelect?.(
+                        school || {
+                          type: "Feature",
+                          geometry: { type: "Point", coordinates: [selectedFeature.longitude, selectedFeature.latitude] },
+                          properties: selectedFeature.properties,
+                        }
+                      );
+                    }}
+                  >
+                    Lihat profil <ArrowRight size={14} />
+                  </button>
+                  <button
+                    className="school-preview-compare"
                     disabled={comparedSchools.length >= 3 || comparedSchools.some((school) => school.id === selectedFeature.properties.id)}
-                    title={comparedSchools.some((school) => school.id === selectedFeature.properties.id) ? "Sudah ditambahkan" : comparedSchools.length >= 3 ? "Maksimal 3 sekolah" : "Tambah ke perbandingan"}
-                    onClick={() => addToCompare(selectedFeature.properties)}>
+                    title={
+                      comparedSchools.some((school) => school.id === selectedFeature.properties.id)
+                        ? "Sudah ditambahkan"
+                        : comparedSchools.length >= 3
+                        ? "Maksimal 3 sekolah"
+                        : "Tambah ke perbandingan"
+                    }
+                    onClick={() => addToCompare(selectedFeature.properties)}
+                  >
                     {comparedSchools.some((school) => school.id === selectedFeature.properties.id) ? <Check size={14} /> : <Plus size={14} />}
                     {comparedSchools.some((school) => school.id === selectedFeature.properties.id) ? "Ditambahkan" : "Bandingkan"}
                   </button>
                 </div>
               </section>
-            ) : <div className="p-1 min-w-[180px] text-slate-800">
-              <h3 className="font-bold text-[#1F6F5F] text-sm mb-1">{selectedFeature.properties.nama}</h3>
-              <div className="flex justify-between items-center text-xs border-b border-slate-100 pb-1 mb-2">
-                <span className="text-slate-500">Status</span>
-                <span
-                  className={`font-semibold px-2 py-0.5 rounded ${
-                    selectedFeature.properties.status === "Negeri" ? "bg-emerald-100 text-emerald-700" : "bg-orange-100 text-orange-700"
-                  }`}
-                >
-                  {selectedFeature.properties.status}
-                </span>
+            ) : (
+              <div className="p-1.5 min-w-[240px] max-w-[280px] text-slate-800 space-y-2.5">
+                <div>
+                  <h3 className="font-bold text-[#132a25] text-sm leading-snug pr-4">{selectedFeature.properties.nama}</h3>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    NPSN {selectedFeature.properties.npsn || "-"}
+                    {selectedFeature.properties.kecamatan ? ` · Kec. ${selectedFeature.properties.kecamatan}` : ""}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between text-xs border-y border-slate-100 py-1.5">
+                  <span className="font-semibold text-slate-800">
+                    {selectedFeature.properties.status} · Akred. {selectedFeature.properties.akreditasi || "Belum"}
+                  </span>
+                  <span className="text-slate-600">
+                    {selectedFeature.properties.jumlahSiswa ?? "-"} siswa · {selectedFeature.properties.ruangKelas ?? "-"} kls
+                  </span>
+                </div>
+
+                {selectedFeature.properties.ruangKelas !== null && selectedFeature.properties.ruangKelas !== undefined && (
+                  <div className="text-xs text-slate-600 flex justify-between">
+                    <span>Baik: <strong>{selectedFeature.properties.kelasBaik ?? 0}</strong></span>
+                    <span>R. Sedang: <strong className="text-amber-800">{selectedFeature.properties.kelasRusakSedang ?? 0}</strong></span>
+                    <span>R. Berat: <strong className="text-rose-700">{selectedFeature.properties.kelasRusakBerat ?? 0}</strong></span>
+                  </div>
+                )}
+
+                <div className="flex gap-1.5 pt-0.5">
+                  {selectedFeature.properties.id_wilayah && (
+                    <button
+                      onClick={() => {
+                        setSelectedWilayahId(selectedFeature.properties.id_wilayah);
+                        setSelectedFeature(null);
+                      }}
+                      className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs py-1.5 px-2 rounded-lg transition-colors font-semibold"
+                    >
+                      Diagnosis Kec.
+                    </button>
+                  )}
+                  <button
+                    disabled={comparedSchools.length >= 3 || comparedSchools.some((s) => s.id === selectedFeature.properties.id)}
+                    onClick={() => {
+                      addToCompare(selectedFeature.properties);
+                      setSelectedFeature(null);
+                    }}
+                    className="flex-1 bg-[#1F6F5F] hover:bg-[#175649] disabled:bg-slate-300 text-white text-xs py-1.5 px-2 rounded-lg transition-colors font-semibold"
+                  >
+                    {comparedSchools.some((s) => s.id === selectedFeature.properties.id) ? "Dibandingkan" : "+ Bandingkan"}
+                  </button>
+                </div>
               </div>
-              {selectedFeature.properties.kecamatan && (
-                <p className="text-[11px] text-slate-500 mb-2">Kec. {selectedFeature.properties.kecamatan}</p>
-              )}
-              <button
-                onClick={() => {
-                  addToCompare(selectedFeature.properties);
-                  setSelectedFeature(null);
-                }}
-                className="w-full bg-[#1F6F5F] hover:bg-emerald-800 text-white text-xs py-1.5 rounded transition-colors font-medium"
-              >
-                + Tambah ke Perbandingan
-              </button>
-            </div>}
+            )}
           </Popup>
         )}
       </MapView>

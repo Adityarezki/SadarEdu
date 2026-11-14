@@ -30,23 +30,27 @@ export const useDataStore = create((set, get) => ({
     if (get().loading) return;
     set({ loading: true, error: null });
     try {
-      const [wil, sek, pri, blank, ring] = await Promise.all([
+      const [wil, sek, pri, blank, cov, ring] = await Promise.all([
         api.get('/wilayah/list', { level: 'Kecamatan' }),
         api.get('/sekolah/geojson'),
         api.get('/analisis/prioritas'),
         api.get('/analisis/blank-spots'),
+        api.get('/analisis/coverage').catch(() => ({ data: EMPTY_FC })),
         api.get('/analisis/ringkasan'),
       ]);
-      const weights = initialWeights(pri.data.meta.indikator);
+      const prevWeights = get().weights;
+      const defaultWeights = initialWeights(pri.data.meta.indikator);
+      const hasPrevWeights = prevWeights && Object.keys(prevWeights).length > 0;
       set({
         kecamatan: wil.data.map((w) => ({ id: String(w.id_wilayah), name: w.nama_wilayah, lng: w.lng, lat: w.lat, bbox: w.bbox })),
         sekolah: { type: 'FeatureCollection', features: sek.data.features.map(mapSchoolFeature) },
         prioritas: pri.data,
         meta: pri.data.meta,
         blankSpots: blank.data,
+        coverage: cov.data || EMPTY_FC,
         ringkasan: ring.data,
-        weights,
-        savedWeights: weights,
+        weights: hasPrevWeights ? prevWeights : defaultWeights,
+        savedWeights: defaultWeights,
         loading: false,
         loaded: true,
       });
@@ -57,13 +61,14 @@ export const useDataStore = create((set, get) => ({
 
   /** Muat ulang prioritas setelah analisis/bobot berubah */
   reloadAnalysis: async () => {
-    const [pri, blank, ring] = await Promise.all([
+    const [pri, blank, cov, ring] = await Promise.all([
       api.get('/analisis/prioritas'),
       api.get('/analisis/blank-spots'),
+      api.get('/analisis/coverage').catch(() => ({ data: EMPTY_FC })),
       api.get('/analisis/ringkasan'),
     ]);
     const weights = initialWeights(pri.data.meta.indikator);
-    set({ prioritas: pri.data, meta: pri.data.meta, blankSpots: blank.data, ringkasan: ring.data, weights, savedWeights: weights });
+    set({ prioritas: pri.data, meta: pri.data.meta, blankSpots: blank.data, coverage: cov.data || EMPTY_FC, ringkasan: ring.data, weights, savedWeights: weights });
   },
 
   loadCandidates: async () => {

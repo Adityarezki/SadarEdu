@@ -1,15 +1,19 @@
 import { useMemo, useState } from "react";
+import { SlidersHorizontal, Search, ChevronRight } from "lucide-react";
 import { useDataStore } from "../../store/useDataStore";
 import { useMapStore } from "../../store/useMapStore";
 import { rescoreFeatures, KATEGORI_URUT, colorOf, fmt } from "../../lib/analysis";
-import { KategoriBadge, ErrorBox, InfoBox, Bar, btnPrimary, btnGhost } from "../ui/kit";
+import { KategoriBadge, ErrorBox, InfoBox, inputCls, btnPrimary, btnGhost } from "../ui/kit";
 
-export default function PrioritasPanel({ onPilihWilayah }) {
+export default function PrioritasPanel({ ringkasan, onPilihWilayah }) {
   const { prioritas, meta, weights, savedWeights, setWeight, resetWeights, saveWeights, recalculate } = useDataStore();
   const { selectedWilayahId } = useMapStore();
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
+  const [q, setQ] = useState("");
+  const [katFilter, setKatFilter] = useState("ALL");
+  const [showWeights, setShowWeights] = useState(false);
 
   const scored = useMemo(
     () => rescoreFeatures(prioritas.features, weights, meta && meta.kategori),
@@ -19,6 +23,28 @@ export default function PrioritasPanel({ onPilihWilayah }) {
     () => [...scored].sort((a, b) => (a.properties.ranking_live ?? 999) - (b.properties.ranking_live ?? 999)),
     [scored]
   );
+
+  const countsByKat = useMemo(() => {
+    const c = { ALL: ranking.length };
+    KATEGORI_URUT.forEach((k) => {
+      c[k] = 0;
+    });
+    ranking.forEach((f) => {
+      const k = f.properties.kategori_live;
+      if (k) c[k] = (c[k] || 0) + 1;
+    });
+    return c;
+  }, [ranking]);
+
+  const filteredRanking = useMemo(() => {
+    const query = q.trim().toLowerCase();
+    return ranking.filter((f) => {
+      const p = f.properties;
+      if (katFilter !== "ALL" && p.kategori_live !== katFilter) return false;
+      if (query && !(p.nama_wilayah || "").toLowerCase().includes(query)) return false;
+      return true;
+    });
+  }, [ranking, q, katFilter]);
 
   const groups = useMemo(() => {
     const g = {};
@@ -52,8 +78,7 @@ export default function PrioritasPanel({ onPilihWilayah }) {
     return (
       <div className="space-y-3">
         <InfoBox tone="amber">
-          Skor prioritas belum dihitung. Pastikan batas kecamatan, sekolah, statistik, dan data kependudukan sudah diunggah
-          Operator, lalu jalankan perhitungan.
+          Skor prioritas belum dihitung. Pastikan batas kecamatan, sekolah, dan kependudukan sudah diunggah Operator.
         </InfoBox>
         <ErrorBox message={error} onClose={() => setError("")} />
         <button className={btnPrimary} disabled={!!busy} onClick={() => run("hitung", () => recalculate(), "Analisis selesai dihitung.")}>
@@ -63,83 +88,161 @@ export default function PrioritasPanel({ onPilihWilayah }) {
     );
   }
 
+  const totalKelasRusak =
+    (Number(ringkasan?.kelas_rusak_berat) || 0) + (Number(ringkasan?.kelas_rusak_sedang) || 0);
+
   return (
-    <div className="space-y-5">
-      <section>
-        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Bobot kriteria (MCDA)</h3>
-        <p className="text-[11px] text-slate-400 mb-3">
-          Geser bobot untuk melihat perubahan peta dan ranking seketika. Total otomatis dinormalkan ({fmt(total, 0)}% → 100%).
-          Klik <strong>Simpan bobot</strong> agar tersimpan di server.
-        </p>
-        {Object.entries(groups).map(([kelompok, list]) => (
-          <div key={kelompok} className="mb-3">
-            <p className="text-[11px] font-semibold text-[#1F6F5F] mb-1.5">{kelompok}</p>
-            {list.map((i) => (
-              <div key={i.kode} className="mb-2">
-                <div className="flex justify-between text-xs">
-                  <label htmlFor={`w-${i.kode}`} className="font-medium text-slate-700" title={i.deskripsi}>{i.nama}</label>
-                  <span className="font-bold text-[#1F6F5F] tabular-nums">{fmt(weights[i.kode], 0)}%</span>
-                </div>
-                <input
-                  id={`w-${i.kode}`}
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={weights[i.kode] ?? 0}
-                  onChange={(e) => setWeight(i.kode, e.target.value)}
-                  className="w-full accent-[#1F6F5F] cursor-pointer"
-                />
+    <div>
+      {ringkasan && (
+        <section className="sh-overview-grid" aria-label="Ringkasan utama Bogor">
+          <div className="sh-overview-stat">
+            <div className="sh-overview-num">{fmt(ringkasan.sekolah)}</div>
+            <div className="sh-overview-label">Sekolah SMP</div>
+            <div className="sh-overview-sub">
+              {ringkasan.sekolah_negeri ?? 0} Negeri · {ringkasan.sekolah_swasta ?? 0} Swasta
+            </div>
+          </div>
+          <div className="sh-overview-stat">
+            <div className="sh-overview-num is-amber">{fmt(ringkasan.gap_kursi)}</div>
+            <div className="sh-overview-label">Kurang Kursi</div>
+            <div className="sh-overview-sub">{fmt(ringkasan.kecamatan)} kecamatan</div>
+          </div>
+          <div className="sh-overview-stat">
+            <div className="sh-overview-num is-rose">{fmt(totalKelasRusak)}</div>
+            <div className="sh-overview-label">Kelas Rusak</div>
+            <div className="sh-overview-sub">{fmt(ringkasan.kelas_rusak_berat ?? 0)} rusak berat</div>
+          </div>
+        </section>
+      )}
+
+      <section className="sh-section">
+        <div className="sh-section-head">
+          <h2 className="sh-section-title">Peringkat Kebutuhan Kecamatan</h2>
+          <button
+            onClick={() => setShowWeights((s) => !s)}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#1F6F5F] hover:underline"
+          >
+            <SlidersHorizontal size={13} />
+            <span>{showWeights ? "Tutup bobot" : "Atur bobot"}</span>
+          </button>
+        </div>
+
+        {(showWeights || dirty) && (
+          <div className="mb-4 p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-slate-800">Bobot 7 Kriteria MCDA</span>
+              <span className="text-slate-600">Total {fmt(total, 0)}% → 100%</span>
+            </div>
+            {Object.entries(groups).map(([kelompok, list]) => (
+              <div key={kelompok} className="space-y-2 pt-1">
+                <p className="text-xs font-semibold text-[#1F6F5F]">{kelompok}</p>
+                {list.map((i) => (
+                  <div key={i.kode}>
+                    <div className="flex justify-between text-xs mb-1">
+                      <label htmlFor={`w-${i.kode}`} className="text-slate-700" title={i.deskripsi}>
+                        {i.nama}
+                      </label>
+                      <span className="font-semibold text-slate-900">{fmt(weights[i.kode], 0)}%</span>
+                    </div>
+                    <input
+                      id={`w-${i.kode}`}
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={weights[i.kode] ?? 0}
+                      onChange={(e) => setWeight(i.kode, e.target.value)}
+                      className="sh-range"
+                    />
+                  </div>
+                ))}
               </div>
             ))}
+            <ErrorBox message={error} onClose={() => setError("")} />
+            {ok && <p className="text-xs font-medium text-emerald-800" role="status">{ok}</p>}
+            <div className="flex items-center gap-2 pt-1">
+              <button className={btnPrimary} disabled={!dirty || !!busy || total <= 0} onClick={() => run("simpan", saveWeights, "Bobot disimpan.")}>
+                {busy === "simpan" ? "Menyimpan..." : "Simpan bobot"}
+              </button>
+              <button className={btnGhost} disabled={!dirty || !!busy} onClick={resetWeights}>
+                Reset
+              </button>
+            </div>
           </div>
-        ))}
-        <ErrorBox message={error} onClose={() => setError("")} />
-        {ok && <p className="text-xs text-emerald-700 mb-2" role="status">{ok}</p>}
-        <div className="flex gap-2">
-          <button className={btnPrimary} disabled={!dirty || !!busy || total <= 0} onClick={() => run("simpan", saveWeights, "Bobot disimpan.")}>
-            {busy === "simpan" ? "Menyimpan..." : "Simpan bobot"}
-          </button>
-          <button className={btnGhost} disabled={!dirty || !!busy} onClick={resetWeights}>Reset</button>
-        </div>
-        {dirty && (
-          <p className="text-[11px] text-amber-700 mt-2">
-            Pratinjau: bobot belum disimpan. Diagnosis teks di bawah masih memakai bobot tersimpan.
-          </p>
         )}
-      </section>
 
-      <section>
-        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Peringkat kebutuhan kecamatan</h3>
-        <div className="flex flex-wrap gap-x-3 gap-y-1 mb-3">
-          {KATEGORI_URUT.map((k) => (
-            <span key={k} className="flex items-center gap-1 text-[10px] text-slate-500">
-              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: colorOf(k) }} /> {k}
-            </span>
-          ))}
+        <div className="space-y-3 mb-4">
+          <div className="relative">
+            <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              type="search"
+              placeholder="Cari nama kecamatan..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              className={`${inputCls} pl-9`}
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => setKatFilter("ALL")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                katFilter === "ALL"
+                  ? "bg-[#132a25] text-white border-[#132a25]"
+                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              Semua ({countsByKat.ALL})
+            </button>
+            {KATEGORI_URUT.map((k) => (
+              <button
+                key={k}
+                onClick={() => setKatFilter(katFilter === k ? "ALL" : k)}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                  katFilter === k
+                    ? "bg-[#132a25] text-white border-[#132a25]"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full" style={{ background: colorOf(k) }} />
+                <span>{k} ({countsByKat[k] || 0})</span>
+              </button>
+            ))}
+          </div>
         </div>
-        <ol className="space-y-1">
-          {ranking.map((f) => {
+
+        <ol className="sh-list">
+          {filteredRanking.map((f) => {
             const p = f.properties;
+            const m = p.metrik || {};
             const active = String(selectedWilayahId) === String(p.id_wilayah);
+            const rusak = (Number(m.ruang_kelas_rusak_berat) || 0) + (Number(m.ruang_kelas_rusak_sedang) || 0);
+            const gap = Number(m.gap_kursi) || 0;
             return (
-              <li key={p.id_wilayah}>
+              <li key={p.id_wilayah} className={`sh-list-item ${active ? "is-selected" : ""}`}>
                 <button
                   onClick={() => onPilihWilayah(p.id_wilayah)}
-                  className={`w-full text-left rounded-xl border px-3 py-2 transition-colors ${
-                    active ? "border-[#1F6F5F] bg-emerald-50" : "border-slate-200 bg-white hover:bg-slate-50"
-                  }`}
+                  className="w-full text-left flex items-center justify-between gap-3"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold text-slate-800">
-                      <span className="text-slate-400 tabular-nums mr-1.5">{p.ranking_live ?? "-"}.</span>
-                      {p.nama_wilayah}
-                    </span>
-                    <span className="flex items-center gap-2">
-                      <span className="text-xs font-bold tabular-nums" style={{ color: p.color }}>{p.skor === null ? "-" : fmt(p.skor, 1)}</span>
-                      <KategoriBadge kategori={p.kategori_live} />
-                    </span>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-500 w-6 shrink-0">#{p.ranking_live ?? "-"}</span>
+                      <span className="text-[14px] font-semibold text-slate-900 truncate">Kec. {p.nama_wilayah}</span>
+                    </div>
+                    <p className="text-xs text-slate-600 mt-1 pl-8 truncate">
+                      {gap > 0 ? `Kurang ${fmt(gap)} kursi` : `${fmt(m.jumlah_sekolah ?? 0)} sekolah`}
+                      {rusak > 0 ? ` · ${fmt(rusak)} kelas rusak` : ""}
+                    </p>
                   </div>
-                  <div className="mt-1.5"><Bar value={p.skor || 0} color={p.color} /></div>
+
+                  <div className="flex items-center gap-2.5 shrink-0">
+                    <div className="text-right">
+                      <div className="text-[14px] font-bold" style={{ color: p.color }}>
+                        {p.skor === null ? "-" : fmt(p.skor, 1)}
+                      </div>
+                    </div>
+                    <KategoriBadge kategori={p.kategori_live} />
+                    <ChevronRight size={15} className="text-slate-400" />
+                  </div>
                 </button>
               </li>
             );

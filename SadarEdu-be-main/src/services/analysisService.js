@@ -60,10 +60,21 @@ async function collectMetrics(tahun, radiusKm = cfg.COVERAGE_RADIUS_KM, client =
            COALESCE(kp.jumlah_penduduk, 0)    AS penduduk,
            COALESCE(kp.penduduk_usia_smp, 0)  AS penduduk_usia_smp,
            COALESCE(sc.jumlah_sekolah, 0)     AS jumlah_sekolah,
+           COALESCE(sc.jumlah_sekolah_negeri, 0) AS jumlah_sekolah_negeri,
+           COALESCE(sc.jumlah_sekolah_swasta, 0) AS jumlah_sekolah_swasta,
+           COALESCE(sc.akreditasi_a, 0)       AS akreditasi_a,
+           COALESCE(sc.akreditasi_b, 0)       AS akreditasi_b,
+           COALESCE(sc.akreditasi_c, 0)       AS akreditasi_c,
+           COALESCE(sc.belum_terakreditasi, 0) AS belum_terakreditasi,
            COALESCE(sc.jumlah_siswa, 0)       AS jumlah_siswa,
            COALESCE(sc.jumlah_guru, 0)        AS jumlah_guru,
            COALESCE(sc.jumlah_rombel, 0)      AS jumlah_rombel,
            COALESCE(sc.jumlah_ruang_kelas, 0) AS jumlah_ruang_kelas,
+           COALESCE(sc.ruang_kelas_baik, 0)         AS ruang_kelas_baik,
+           COALESCE(sc.ruang_kelas_rusak_ringan, 0) AS ruang_kelas_rusak_ringan,
+           COALESCE(sc.ruang_kelas_rusak_sedang, 0) AS ruang_kelas_rusak_sedang,
+           COALESCE(sc.ruang_kelas_rusak_berat, 0)  AS ruang_kelas_rusak_berat,
+           COALESCE(sc.sekolah_rusak_berat, 0)      AS sekolah_rusak_berat,
            COALESCE(sc.sekolah_ada_siswa, 0)  AS sekolah_ada_siswa,
            COALESCE(sc.siswa_dgn_kelas, 0)    AS siswa_dgn_kelas,
            COALESCE(sc.siswa_tanpa_data_kelas, 0) AS siswa_tanpa_data_kelas,
@@ -86,11 +97,22 @@ async function collectMetrics(tahun, radiusKm = cfg.COVERAGE_RADIUS_KM, client =
     ) kp ON TRUE
     LEFT JOIN LATERAL (
       SELECT COUNT(*)::int AS jumlah_sekolah,
+             (COUNT(*) FILTER (WHERE UPPER(s.status_sekolah) = 'NEGERI'))::int        AS jumlah_sekolah_negeri,
+             (COUNT(*) FILTER (WHERE UPPER(s.status_sekolah) = 'SWASTA'))::int        AS jumlah_sekolah_swasta,
+             (COUNT(*) FILTER (WHERE UPPER(s.akreditasi) = 'A'))::int                 AS akreditasi_a,
+             (COUNT(*) FILTER (WHERE UPPER(s.akreditasi) = 'B'))::int                 AS akreditasi_b,
+             (COUNT(*) FILTER (WHERE UPPER(s.akreditasi) = 'C'))::int                 AS akreditasi_c,
+             (COUNT(*) FILTER (WHERE s.akreditasi IS NULL OR s.akreditasi = '' OR UPPER(s.akreditasi) NOT IN ('A', 'B', 'C')))::int AS belum_terakreditasi,
              COUNT(st.jumlah_siswa)::int                                              AS sekolah_ada_siswa,
              COALESCE(SUM(st.jumlah_siswa), 0)::int                                   AS jumlah_siswa,
              COALESCE(SUM(st.jumlah_guru), 0)::int                                    AS jumlah_guru,
              COALESCE(SUM(st.jumlah_rombel), 0)::int                                  AS jumlah_rombel,
              COALESCE(SUM(st.jumlah_ruang_kelas), 0)::int                             AS jumlah_ruang_kelas,
+             COALESCE(SUM(st.ruang_kelas_baik), 0)::int                               AS ruang_kelas_baik,
+             COALESCE(SUM(st.ruang_kelas_rusak_ringan), 0)::int                       AS ruang_kelas_rusak_ringan,
+             COALESCE(SUM(st.ruang_kelas_rusak_sedang), 0)::int                       AS ruang_kelas_rusak_sedang,
+             COALESCE(SUM(st.ruang_kelas_rusak_berat), 0)::int                        AS ruang_kelas_rusak_berat,
+             (COUNT(*) FILTER (WHERE COALESCE(st.ruang_kelas_rusak_berat, 0) > 0 OR COALESCE(st.ruang_kelas_rusak_sedang, 0) > 0))::int AS sekolah_rusak_berat,
              COALESCE(SUM(st.jumlah_siswa) FILTER (WHERE st.jumlah_ruang_kelas IS NOT NULL), 0)::int AS siswa_dgn_kelas,
              COALESCE(SUM(st.jumlah_siswa) FILTER (WHERE st.jumlah_ruang_kelas IS NULL), 0)::int     AS siswa_tanpa_data_kelas,
              COALESCE(SUM(st.jumlah_siswa) FILTER (WHERE st.jumlah_guru IS NOT NULL), 0)::int        AS siswa_dgn_guru,
@@ -98,7 +120,8 @@ async function collectMetrics(tahun, radiusKm = cfg.COVERAGE_RADIUS_KM, client =
              (COUNT(*) FILTER (WHERE st.jumlah_guru IS NULL))::int                    AS sekolah_tanpa_data_guru
       FROM sekolah s
       LEFT JOIN LATERAL (
-        SELECT y.jumlah_siswa, y.jumlah_guru, y.jumlah_rombel, y.jumlah_ruang_kelas
+        SELECT y.jumlah_siswa, y.jumlah_guru, y.jumlah_rombel, y.jumlah_ruang_kelas,
+               y.ruang_kelas_baik, y.ruang_kelas_rusak_ringan, y.ruang_kelas_rusak_sedang, y.ruang_kelas_rusak_berat
         FROM statistik_pendidikan y
         WHERE y.id_sekolah = s.id_sekolah AND y.tahun <= $2::int AND ${active('y')}
         ORDER BY y.tahun DESC LIMIT 1
@@ -142,7 +165,11 @@ function buildResultRows(results, metricRows, indikator, radiusKm) {
         radius_km: radiusKm,
         demand_kursi: S.round(S.demandOf(r.metrics, cfg), 0),
         kapasitas_kursi: S.round(S.kapasitasOf(r.metrics, cfg), 0),
+        kapasitas_layak_kursi: S.round(S.kapasitasLayakOf(r.metrics, cfg), 0),
         gap_kursi: S.round(S.gapKursiOf(r.metrics, cfg), 0),
+        gap_kursi_layak: S.round(S.gapKursiLayakOf(r.metrics, cfg), 0),
+        ruang_kelas_rusak_total: S.ruangRusakOf(r.metrics),
+        persen_kelas_rusak: S.round(S.persenKelasRusakOf(r.metrics), 1),
       },
       rekomendasi: { masalah: diag.masalah, faktor_utama: diag.faktor_utama, intervensi, catatan_data: diag.catatan_data },
     };
@@ -351,9 +378,14 @@ async function getRingkasan({ tahun } = {}) {
     db.query(
       `SELECT (SELECT COUNT(*) FROM wilayah w WHERE w.level_wilayah = 'Kecamatan' AND ${active('w')})::int AS kecamatan,
               (SELECT COUNT(*) FROM sekolah s WHERE ${active('s')})::int AS sekolah,
+              (SELECT COUNT(*) FROM sekolah s WHERE UPPER(s.status_sekolah) = 'NEGERI' AND ${active('s')})::int AS sekolah_negeri,
+              (SELECT COUNT(*) FROM sekolah s WHERE UPPER(s.status_sekolah) = 'SWASTA' AND ${active('s')})::int AS sekolah_swasta,
               COALESCE((SELECT SUM((metrik->>'jumlah_siswa')::numeric) FROM priority_score WHERE tahun = $1), 0)::int AS siswa,
               COALESCE((SELECT SUM((metrik->>'penduduk_usia_smp')::numeric) FROM priority_score WHERE tahun = $1), 0)::int AS usia_smp,
-              COALESCE((SELECT SUM((metrik->>'gap_kursi')::numeric) FROM priority_score WHERE tahun = $1), 0)::int AS gap_kursi`,
+              COALESCE((SELECT SUM((metrik->>'gap_kursi')::numeric) FROM priority_score WHERE tahun = $1), 0)::int AS gap_kursi,
+              COALESCE((SELECT SUM((metrik->>'gap_kursi_layak')::numeric) FROM priority_score WHERE tahun = $1), 0)::int AS gap_kursi_layak,
+              COALESCE((SELECT SUM((metrik->>'ruang_kelas_rusak_berat')::numeric) FROM priority_score WHERE tahun = $1), 0)::int AS kelas_rusak_berat,
+              COALESCE((SELECT SUM((metrik->>'ruang_kelas_rusak_sedang')::numeric) FROM priority_score WHERE tahun = $1), 0)::int AS kelas_rusak_sedang`,
       [t]
     ),
     db.query(

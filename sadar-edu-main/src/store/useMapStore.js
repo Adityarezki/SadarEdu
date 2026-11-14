@@ -1,29 +1,41 @@
 import { create } from 'zustand';
 
 // Pusat tampilan Kabupaten Bogor
-const KABUPATEN_VIEW = { longitude: 106.82, latitude: -6.55, zoom: 9.3, pitch: 25, bearing: 0 };
+const KABUPATEN_VIEW = { longitude: 106.82, latitude: -6.55, zoom: 9.8, pitch: 0, bearing: 0 };
 
 export const useMapStore = create((set) => ({
   viewState: { ...KABUPATEN_VIEW },
   setViewState: (viewState) => set({ viewState }),
 
   flyToRegion: (lng, lat, zoom = 14) =>
-    set((state) => ({ viewState: { ...state.viewState, longitude: lng, latitude: lat, zoom, transitionDuration: 1000 } })),
+    set((state) => ({ viewState: { ...state.viewState, longitude: lng, latitude: lat, zoom, pitch: 0, transitionDuration: 1000 } })),
 
   // Permintaan fitBounds ([minLng, minLat, maxLng, maxLat]); dieksekusi oleh MapCanvas
   pendingBounds: null,
   flyToBounds: (bbox) => set({ pendingBounds: bbox ? { bbox, nonce: Date.now() } : null }),
 
+  flyToSchool: (feature) => {
+    if (!feature || !feature.geometry || !Array.isArray(feature.geometry.coordinates)) return;
+    const [lng, lat] = feature.geometry.coordinates;
+    set((state) => ({
+      viewState: { ...state.viewState, longitude: lng, latitude: lat, zoom: 15, pitch: 0, transitionDuration: 900 },
+      pendingBounds: { bbox: [lng - 0.003, lat - 0.003, lng + 0.003, lat + 0.003], nonce: Date.now() },
+      selectedFeature: { longitude: lng, latitude: lat, properties: feature.properties || {} },
+    }));
+  },
+
   activeLayers: {
     showSchools: true,
-    show3DBuildings: true,
+    show3DBuildings: false,
     mcdaLayer: true, // choropleth kategori kebutuhan per kecamatan
     showBlankSpots: false,
     showCoverage: false,
-    showCandidates: true,
+    showCandidates: false, // hanya aktif saat dibutuhkan / tab kandidat dibuka agar peta tidak menumpuk
   },
   toggleLayer: (layerKey) =>
     set((state) => ({ activeLayers: { ...state.activeLayers, [layerKey]: !state.activeLayers[layerKey] } })),
+  setLayer: (layerKey, value) =>
+    set((state) => ({ activeLayers: { ...state.activeLayers, [layerKey]: Boolean(value) } })),
 
   // Seleksi
   selectedFeature: null, // popup sekolah
@@ -32,6 +44,13 @@ export const useMapStore = create((set) => ({
   setSelectedWilayahId: (id) => set({ selectedWilayahId: id === null || id === undefined ? null : String(id) }),
   selectedCandidateId: null,
   setSelectedCandidateId: (id) => set({ selectedCandidateId: id }),
+
+  clearSelection: () =>
+    set({
+      selectedFeature: null,
+      selectedWilayahId: null,
+      selectedCandidateId: null,
+    }),
 
   comparedSchools: [],
   addToCompare: (school) =>

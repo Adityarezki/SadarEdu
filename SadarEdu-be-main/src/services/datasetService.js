@@ -188,8 +188,9 @@ const geomFromGeoJSON = (param, sridParam) =>
 
 async function importWilayah(client, ctx) {
   const features = toFeatures(ctx.data);
-  const out = { diproses: 0, ditambah: 0, diperbarui: 0, dilewati: 0, galat: [] };
+  const out = { diproses: 0, ditambah: 0, diperbarui: 0, dilewati: 0, kependudukan: 0, galat: [] };
   const defaultLevel = ctx.opsi.level_wilayah || 'Kecamatan';
+  const tahunDefault = parseInt(ctx.tahun, 10) || new Date().getFullYear();
 
   for (let i = 0; i < features.length; i += 1) {
     const f = features[i];
@@ -206,6 +207,9 @@ async function importWilayah(client, ctx) {
       autoKode(level, nama);
     const parentKode = pick(p, ['parent_kode', 'kode_parent', 'kode_induk']);
     const luas = dec(pick(p, ['luas_km2', 'luas']));
+    const penduduk = num(pick(p, ['jumlah_penduduk', 'penduduk', 'populasi']));
+    const usiaSmp = num(pick(p, ['penduduk_usia_smp', 'usia_smp', 'usia_13_15']));
+    const tahunFeat = parseInt(pick(p, ['tahun']), 10) || tahunDefault;
 
     try {
       await client.query('SAVEPOINT feat');
@@ -218,12 +222,28 @@ async function importWilayah(client, ctx) {
                luas_km2 = COALESCE(EXCLUDED.luas_km2, wilayah.luas_km2),
                parent_id = COALESCE(EXCLUDED.parent_id, wilayah.parent_id),
                geom = EXCLUDED.geom, id_dataset = EXCLUDED.id_dataset
-         RETURNING (xmax = 0) AS inserted`,
+         RETURNING id_wilayah, luas_km2, (xmax = 0) AS inserted`,
         [String(kode), parentKode ? String(parentKode) : null, String(nama), String(level), luas, JSON.stringify(f.geometry), ctx.crs, ctx.idDataset]
       );
+      const { id_wilayah: idWilayah, luas_km2: luasDb, inserted } = r.rows[0];
+      if (penduduk !== null || usiaSmp !== null) {
+        const effLuas = luasDb || luas;
+        const kepadatan = dec(pick(p, ['kepadatan'])) ?? (effLuas && penduduk ? penduduk / effLuas : null);
+        await client.query(
+          `INSERT INTO kependudukan (id_wilayah, tahun, jumlah_penduduk, penduduk_usia_smp, kepadatan, id_dataset)
+           VALUES ($1, $2, COALESCE($3, 0), COALESCE($4, 0), $5, $6)
+           ON CONFLICT (id_wilayah, tahun) DO UPDATE
+             SET jumlah_penduduk = COALESCE($3, kependudukan.jumlah_penduduk),
+                 penduduk_usia_smp = COALESCE($4, kependudukan.penduduk_usia_smp),
+                 kepadatan = COALESCE($5, kependudukan.kepadatan),
+                 id_dataset = $6`,
+          [idWilayah, tahunFeat, penduduk, usiaSmp, kepadatan, ctx.idDataset]
+        );
+        out.kependudukan += 1;
+      }
       await client.query('RELEASE SAVEPOINT feat');
       out.diproses += 1;
-      if (r.rows[0].inserted) out.ditambah += 1;
+      if (inserted) out.ditambah += 1;
       else out.diperbarui += 1;
     } catch (e) {
       await client.query('ROLLBACK TO SAVEPOINT feat');

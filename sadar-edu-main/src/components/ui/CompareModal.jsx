@@ -107,12 +107,34 @@ export default function CompareModal() {
                   ))}
                 </tr>
                 <tr>
+                  <td className="p-3 text-slate-500 font-medium">Kecamatan / NPSN</td>
+                  {comparedSchools.map((s) => (
+                    <td key={s.id} className="p-3 text-xs text-slate-600">
+                      Kec. {s.kecamatan || "-"} · NPSN {s.npsn || "-"}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
                   <td className="p-3 text-slate-500 font-medium">
                     Ruang Kelas
                   </td>
                   {comparedSchools.map((s) => (
                     <td key={s.id} className="p-3">
                       {s.ruangKelas ?? "-"} RKB
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <td className="p-3 text-slate-500 font-medium">
+                    Kondisi Kelas (Baik / Rusak)
+                  </td>
+                  {comparedSchools.map((s) => (
+                    <td key={s.id} className="p-3 text-xs">
+                      <span className="text-emerald-700 font-semibold">{s.kelasBaik ?? 0} Baik</span>
+                      {" · "}
+                      <span className="text-amber-700 font-semibold">{s.kelasRusakSedang ?? 0} R.Sedang</span>
+                      {" · "}
+                      <span className="text-rose-700 font-semibold">{s.kelasRusakBerat ?? 0} R.Berat</span>
                     </td>
                   ))}
                 </tr>

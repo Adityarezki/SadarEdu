@@ -4,7 +4,7 @@ const S = require('../services/scoring');
 const analysis = require('../services/analysisService');
 const { httpError } = require('../middleware/errorHandler');
 
-const TIPE = ['Sekolah Baru', 'Penambahan Ruang Kelas', 'Penambahan Guru', 'Kombinasi'];
+const TIPE = ['Sekolah Baru', 'Penambahan Ruang Kelas', 'Rehabilitasi Ruang Kelas', 'Penambahan Guru', 'Kombinasi'];
 
 const boundedInt = (v, max, name) => {
   if (v === undefined || v === null || v === '') return 0;
@@ -57,6 +57,7 @@ const createScenario = async (req, res, next) => {
 
     let sekolahBaru = boundedInt(p.sekolah_baru, 50, 'sekolah_baru');
     const ruangKelas = boundedInt(p.ruang_kelas, 1000, 'ruang_kelas');
+    const rehabKelas = boundedInt(p.rehab_kelas, 1000, 'rehab_kelas');
     const guru = boundedInt(p.guru, 1000, 'guru');
 
     const tahun = await analysis.resolveTahun(b.tahun);
@@ -96,7 +97,7 @@ const createScenario = async (req, res, next) => {
     if (tipe === 'Sekolah Baru' && sekolahBaru === 0) sekolahBaru = 1;
 
     const skenario = {
-      sekolah_baru: sekolahBaru, ruang_kelas: ruangKelas, guru,
+      sekolah_baru: sekolahBaru, ruang_kelas: ruangKelas, rehab_kelas: rehabKelas, guru,
       ruang_kelas_per_sekolah: p.ruang_kelas_per_sekolah, guru_per_sekolah: p.guru_per_sekolah,
       serap_kebutuhan: p.serap_kebutuhan,
     };

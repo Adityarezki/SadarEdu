@@ -114,12 +114,27 @@ function parts(m) {
 
 /** Estimasi jumlah siswa yang ingin ditampung = penduduk usia SMP x target APK */
 const demandOf = (m, cfg = defaultConfig) => (toNum(m.penduduk_usia_smp) || 0) * cfg.TARGET_APK;
+/** Ruang kelas rusak sedang + rusak berat (tidak layak pakai secara optimal) */
+const ruangRusakOf = (m) => (toNum(m?.ruang_kelas_rusak_sedang) || 0) + (toNum(m?.ruang_kelas_rusak_berat) || 0);
+/** Persentase ruang kelas rusak sedang/berat terhadap total ruang kelas tercatat */
+const persenKelasRusakOf = (m) => {
+  const c = parts(m || {});
+  if (c.ruang <= 0) return 0;
+  return Math.min(100, (ruangRusakOf(m) / c.ruang) * 100);
+};
 /** Kapasitas = ruang kelas tercatat x siswa per rombel + siswa di sekolah tanpa data kelas (netral) */
 const kapasitasOf = (m, cfg = defaultConfig) => {
   const c = parts(m);
   return c.ruang * cfg.SISWA_PER_ROMBEL + c.siswaTanpaKelas;
 };
+/** Kapasitas layak pakai = (ruang kelas tercatat - rusak sedang/berat) x siswa per rombel + siswa tanpa data kelas */
+const kapasitasLayakOf = (m, cfg = defaultConfig) => {
+  const c = parts(m);
+  const ruangLayak = Math.max(0, c.ruang - ruangRusakOf(m));
+  return ruangLayak * cfg.SISWA_PER_ROMBEL + c.siswaTanpaKelas;
+};
 const gapKursiOf = (m, cfg = defaultConfig) => Math.max(0, demandOf(m, cfg) - kapasitasOf(m, cfg));
+const gapKursiLayakOf = (m, cfg = defaultConfig) => Math.max(0, demandOf(m, cfg) - kapasitasLayakOf(m, cfg));
 
 /**
  * Menghitung nilai mentah tiap indikator dari metrik wilayah.
@@ -278,6 +293,20 @@ function diagnose({ nama, metrics, kontribusi, indikator, cfg = defaultConfig })
       `${fmt(raw.AKSES_BLANK_SPOT, 1)}% luas wilayah berada di luar jangkauan ${fmt(cfg.COVERAGE_RADIUS_KM, 1)} km dari sekolah terdekat.`
     );
   }
+  const rusak = ruangRusakOf(m);
+  const rusakBerat = toNum(m.ruang_kelas_rusak_berat) || 0;
+  const rusakSedang = toNum(m.ruang_kelas_rusak_sedang) || 0;
+  if (rusak > 0) {
+    masalah.push('KELAS_RUSAK');
+    const gapLayak = gapKursiLayakOf(m, cfg);
+    kalimat.push(
+      `Terdapat ${fmt(rusak)} ruang kelas rusak (${fmt(rusakBerat)} rusak berat, ${fmt(rusakSedang)} rusak sedang; ${fmt(persenKelasRusakOf(m), 1)}% dari total ruang kelas)${gapLayak > gap ? ` sehingga kekurangan kursi layak pakai mencapai ${fmt(gapLayak)} kursi` : ''}.`
+    );
+  }
+  if (m.jumlah_sekolah_negeri !== undefined && toNum(m.jumlah_sekolah_negeri) === 0 && sekolah > 0) {
+    masalah.push('TANPA_SMP_NEGERI');
+    kalimat.push(`Seluruh ${fmt(sekolah)} sekolah di wilayah ini berstatus Swasta (belum ada SMP Negeri).`);
+  }
 
   const faktorUtama = indikator
     .map((ind) => ({
@@ -346,6 +375,25 @@ function recommendIntervensi(metrics, cfg = defaultConfig) {
             ? `Kekurangan kapasitas sekitar ${fmt(gap)} kursi setara ${fmt(gap / kapasitasSekolahBaru, 1)} sekolah standar.`
             : `${fmt(raw.AKSES_BLANK_SPOT, 1)}% wilayah berada di luar jangkauan sekolah.`,
     });
+  } else if (m.jumlah_sekolah_negeri !== undefined && toNum(m.jumlah_sekolah_negeri) === 0 && sekolah > 0) {
+    out.push({
+      tipe: 'Sekolah Baru',
+      prioritas: 2,
+      jumlah: 1,
+      alasan: `Belum ada SMP Negeri di wilayah ini (seluruh ${fmt(sekolah)} sekolah berstatus Swasta). Pertimbangkan pendirian 1 unit SMP Negeri baru.`,
+    });
+  }
+
+  const rusak = ruangRusakOf(m);
+  const rusakBerat = toNum(m.ruang_kelas_rusak_berat) || 0;
+  const rusakSedang = toNum(m.ruang_kelas_rusak_sedang) || 0;
+  if (rusak > 0) {
+    out.push({
+      tipe: 'Rehabilitasi Ruang Kelas',
+      prioritas: rusakBerat >= 5 || persenKelasRusakOf(m) >= 15 ? 1 : 2,
+      jumlah: rusak,
+      alasan: `Terdapat ${fmt(rusak)} ruang kelas rusak (${fmt(rusakBerat)} rusak berat, ${fmt(rusakSedang)} rusak sedang) yang perlu direhabilitasi agar kembali layak pakai (${fmt(rusak * cfg.SISWA_PER_ROMBEL)} kursi).`,
+    });
   }
 
   if (isNum(raw.RASIO_SISWA_KELAS) && raw.RASIO_SISWA_KELAS > cfg.SISWA_PER_ROMBEL && ruang > 0) {
@@ -407,7 +455,10 @@ function snapshot(m, indikator, stats, cfg) {
     kategori: categorize(skor, cfg),
     demand: round(demandOf(m, cfg), 0),
     kapasitas: round(kapasitasOf(m, cfg), 0),
+    kapasitas_layak: round(kapasitasLayakOf(m, cfg), 0),
     gap_kursi: round(gapKursiOf(m, cfg), 0),
+    gap_kursi_layak: round(gapKursiLayakOf(m, cfg), 0),
+    kelas_rusak: ruangRusakOf(m),
   };
 }
 
@@ -416,7 +467,7 @@ function snapshot(m, indikator, stats, cfg) {
  * Normalisasi memakai rentang (min/max) kondisi dasar seluruh wilayah, sehingga
  * skor "sebelum" sama dengan skor tersimpan dan perbandingannya apple-to-apple.
  *
- * skenario: { sekolah_baru, ruang_kelas, guru, ruang_kelas_per_sekolah, guru_per_sekolah,
+ * skenario: { sekolah_baru, ruang_kelas, rehab_kelas, guru, ruang_kelas_per_sekolah, guru_per_sekolah,
  *             serap_kebutuhan (default true), blank_pct_after, jarak_after }
  */
 function simulate({ metrics, skenario, indikator, stats, cfg = defaultConfig }) {
@@ -424,7 +475,11 @@ function simulate({ metrics, skenario, indikator, stats, cfg = defaultConfig }) 
   const sekolahBaru = Math.max(0, toNum(s.sekolah_baru) || 0);
   const perSekolahKelas = toNum(s.ruang_kelas_per_sekolah) ?? cfg.SEKOLAH_BARU_RUANG_KELAS;
   const perSekolahGuru = toNum(s.guru_per_sekolah) ?? cfg.SEKOLAH_BARU_GURU;
-  const tambahKelas = Math.max(0, toNum(s.ruang_kelas) || 0) + sekolahBaru * perSekolahKelas;
+  const rehabDiminta = Math.max(0, toNum(s.rehab_kelas) || 0);
+  const rusakAwal = ruangRusakOf(metrics);
+  const rehabKelas = rusakAwal > 0 ? Math.min(rehabDiminta, rusakAwal) : rehabDiminta;
+  const tambahKelasBaru = Math.max(0, toNum(s.ruang_kelas) || 0) + sekolahBaru * perSekolahKelas;
+  const tambahKelas = tambahKelasBaru + rehabKelas;
   const tambahGuru = Math.max(0, toNum(s.guru) || 0) + sekolahBaru * perSekolahGuru;
   const tambahKapasitas = tambahKelas * cfg.SISWA_PER_ROMBEL;
 
@@ -434,6 +489,16 @@ function simulate({ metrics, skenario, indikator, stats, cfg = defaultConfig }) 
   after.jumlah_sekolah = (toNum(metrics.jumlah_sekolah) || 0) + sekolahBaru;
   after.jumlah_ruang_kelas = (toNum(metrics.jumlah_ruang_kelas) || 0) + tambahKelas;
   after.jumlah_guru = (toNum(metrics.jumlah_guru) || 0) + tambahGuru;
+
+  if (rehabKelas > 0) {
+    const rbAwal = toNum(metrics.ruang_kelas_rusak_berat) || 0;
+    const rsAwal = toNum(metrics.ruang_kelas_rusak_sedang) || 0;
+    const kurangiBerat = Math.min(rbAwal, rehabKelas);
+    const kurangiSedang = Math.min(rsAwal, Math.max(0, rehabKelas - kurangiBerat));
+    after.ruang_kelas_rusak_berat = rbAwal - kurangiBerat;
+    after.ruang_kelas_rusak_sedang = rsAwal - kurangiSedang;
+    after.ruang_kelas_baik = (toNum(metrics.ruang_kelas_baik) || 0) + kurangiBerat + kurangiSedang;
+  }
 
   // Kapasitas baru terisi oleh anak usia SMP yang sebelumnya belum tertampung
   const serap = s.serap_kebutuhan === undefined ? true : Boolean(s.serap_kebutuhan);
@@ -458,13 +523,16 @@ function simulate({ metrics, skenario, indikator, stats, cfg = defaultConfig }) 
     after: afterSnap,
     tambahan: {
       sekolah: sekolahBaru,
-      ruang_kelas: tambahKelas,
+      ruang_kelas: tambahKelasBaru,
+      rehab_kelas: rehabKelas,
       guru: tambahGuru,
       kapasitas_kursi: tambahKapasitas,
     },
     perubahan: {
       skor: round(afterSnap.skor - before.skor, 2),
       gap_kursi: round(afterSnap.gap_kursi - before.gap_kursi, 0),
+      gap_kursi_layak: round(afterSnap.gap_kursi_layak - before.gap_kursi_layak, 0),
+      kelas_rusak: round(afterSnap.kelas_rusak - before.kelas_rusak, 0),
       kategori_berubah: before.kategori !== afterSnap.kategori,
     },
   };
@@ -552,8 +620,12 @@ function pickTopKandidat(scored, { topN = 10, maxPerWilayah = 3, minSeparationKm
 module.exports = {
   INDIKATOR_DEFAULT,
   demandOf,
+  ruangRusakOf,
+  persenKelasRusakOf,
   kapasitasOf,
+  kapasitasLayakOf,
   gapKursiOf,
+  gapKursiLayakOf,
   deriveIndicators,
   columnStats,
   normalizeValue,
