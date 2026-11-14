@@ -1,4 +1,8 @@
+<<<<<<< HEAD:src/lib/operatorImport.js
+// Panjang NPSN (Nomor Pokok Sekolah Nasional) adalah 8 digit.
+=======
 ﻿// Panjang NPSN (Nomor Pokok Sekolah Nasional) adalah 8 digit.
+>>>>>>> upstream/main:sadar-edu-main/src/lib/operatorImport.js
 export const NPSN_LENGTH = 8;
 
 // Kolom skema SADAR EDU yang harus dicocokkan dengan kolom berkas sumber.
@@ -311,4 +315,8 @@ export function summarizePreview(draft, limit = 100) {
   });
 
   return { total: rows.length, withMarker, withoutMarker: rows.length - withMarker, rows: preview };
+<<<<<<< HEAD:src/lib/operatorImport.js
 }
+=======
+}
+>>>>>>> upstream/main:sadar-edu-main/src/lib/operatorImport.js
