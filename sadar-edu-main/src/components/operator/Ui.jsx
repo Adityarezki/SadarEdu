@@ -1,4 +1,4 @@
-﻿import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 
 // Penanda nilai kosong pada kartu dan tabel (bukan tanda baca di kalimat).
 export const EMPTY = '\u2014';
@@ -6,9 +6,9 @@ export const EMPTY = '\u2014';
 export const FOCUS =
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2c6e8e]';
 
-export const BTN_PRIMARY = `inline-flex h-[42px] cursor-pointer items-center justify-center rounded-lg bg-[#1b4965] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#153a52] ${FOCUS}`;
+export const BTN_PRIMARY = `inline-flex h-[42px] cursor-pointer items-center justify-center rounded-lg bg-[#1b4965] px-5 text-sm font-semibold text-white transition-all duration-150 hover:bg-[#153a52] hover:shadow-xs active:scale-[0.98] ${FOCUS}`;
 
-export const BTN_OUTLINE = `inline-flex h-[42px] cursor-pointer items-center justify-center rounded-lg border border-[#d7e1e8] bg-white px-5 text-sm font-semibold text-[#173042] transition-colors hover:bg-[#edf3f6] ${FOCUS}`;
+export const BTN_OUTLINE = `inline-flex h-[42px] cursor-pointer items-center justify-center rounded-lg border border-[#d7e1e8] bg-white px-5 text-sm font-semibold text-[#173042] transition-all duration-150 hover:bg-[#edf3f6] hover:shadow-xs active:scale-[0.98] ${FOCUS}`;
 
 export const CARD =
   'rounded-[10px] border border-[#d7e1e8] bg-white shadow-[0_12px_30px_rgba(10,36,51,0.1)]';
@@ -75,7 +75,7 @@ export function Dialog({ title, onClose, focusRef, wide = false, children }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 animate-modal-backdrop"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -86,7 +86,7 @@ export function Dialog({ title, onClose, focusRef, wide = false, children }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`max-h-[90vh] w-full overflow-y-auto rounded-2xl bg-white p-6 text-[#173042] shadow-xl outline-none ${
+        className={`animate-modal-content max-h-[90vh] w-full overflow-y-auto rounded-2xl bg-white p-6 text-[#173042] shadow-xl outline-none ${
           wide ? 'max-w-2xl' : 'max-w-md'
         }`}
       >

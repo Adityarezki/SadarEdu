@@ -1,6 +1,9 @@
 import { useShallow } from "zustand/react/shallow";
 import "./explorer.css";
 import schoolIllustration from "../../assets/figma/school-hero.png";
+import emptySearchIcon from "../../assets/figma/icon-search-empty.svg";
+import errorIcon from "../../assets/figma/icon-error.svg";
+import logoSadar from "../../assets/figma/logo-sadar.svg";
 import { useState, useMemo, useEffect, useRef, useLayoutEffect, lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -286,8 +289,11 @@ export default function EksplorasiPeta() {
   return (
     <div className={`explorer relative w-full overflow-hidden flex flex-col font-sans ${isSidebarOpen ? "panel-open" : ""}`}>
       <nav className="explorer-floating-nav" aria-label="Navigasi peta">
+        <Link to="/" className="flex items-center gap-2 pr-2" title="Kembali ke Beranda">
+          <img src={logoSadar} alt="SADAR EDU" className="w-6 h-6 object-contain" />
+          <span className="font-bold text-[#1b4965] text-xs hidden sm:inline">SADAR EDU</span>
+        </Link>
         <button className={isSidebarOpen ? "is-active" : ""} onClick={() => setIsSidebarOpen(!isSidebarOpen)} aria-expanded={isSidebarOpen} aria-controls="explorer-panel"><School size={16} /> Jelajahi</button>
-        <Link to="/">Beranda</Link>
       </nav>
       <Link to="/login" className="explorer-floating-login">Masuk pengelola <ChevronRight size={15} /></Link>
       <aside id="explorer-panel" aria-label="Pencarian sekolah" className={`explorer-panel ${isSidebarOpen ? "is-open" : "is-closed"}`} inert={!isSidebarOpen}>
@@ -355,6 +361,32 @@ export default function EksplorasiPeta() {
 
           {/* Konten Scrollable */}
           <div ref={resultsScrollRef} key={activeTab} className="explorer-panel-content space-y-4">
+            {loading && !bogorSchools.length && (
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3" role="status">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded-full border-2 border-[#1b4965] border-t-transparent animate-spin" />
+                  <span className="text-xs font-semibold text-slate-700">Menyiapkan data sekolah Kabupaten Bogor…</span>
+                </div>
+                <div className="space-y-2">
+                  <div className="h-3 bg-slate-200 rounded animate-pulse w-3/4" />
+                  <div className="h-3 bg-slate-200 rounded animate-pulse w-1/2" />
+                </div>
+              </div>
+            )}
+            {error && !bogorSchools.length && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-xl space-y-2 text-center" role="alert">
+                <img src={errorIcon} alt="" className="w-8 h-8 mx-auto" />
+                <h3 className="text-xs font-bold text-red-800">Gagal Memuat Data Sekolah</h3>
+                <p className="text-[11px] text-red-600">{error}</p>
+                <button
+                  type="button"
+                  onClick={() => loadPublic()}
+                  className="mt-2 px-3 py-1.5 bg-[#1b4965] hover:bg-[#153a52] text-white text-xs font-semibold rounded-lg shadow-sm"
+                >
+                  Coba lagi
+                </button>
+              </div>
+            )}
             {activeLayers.mcdaLayer && !needs.features.length && <p className="text-xs text-slate-500" role={geographicErrors.needs ? 'alert' : 'status'}>
               {geographicErrors.needs ? <>Kebutuhan gagal dimuat. <button className="underline" onClick={retryGeography}>Coba lagi</button></> : 'Menghitung kebutuhan layanan pada batas kecamatan…'}
             </p>}
@@ -448,11 +480,16 @@ export default function EksplorasiPeta() {
               <div className="space-y-3">
                 <p className="explorer-result-count">{filteredSchools.length} sekolah sesuai pencarian</p>
                 {filteredSchools.length === 0 ? (
-                  <div className="text-center py-10 px-4 text-slate-400">
-                    <p className="text-xs font-medium">Tidak ada sekolah yang cocok dengan filter aktif.</p>
+                  <div className="flex flex-col items-center justify-center py-10 px-4 text-center rounded-xl bg-slate-50 border border-dashed border-slate-200">
+                    <img src={emptySearchIcon} alt="" className="w-10 h-10 mb-2 opacity-70" />
+                    <h3 className="text-sm font-semibold text-slate-800">Tidak ada sekolah yang cocok</h3>
+                    <p className="text-xs text-slate-500 mt-1 max-w-xs">
+                      Coba kata kunci pencarian lain atau kurangi filter kecamatan dan status yang aktif.
+                    </p>
                     <button
+                      type="button"
                       onClick={resetFilters}
-                      className="mt-3 px-3 py-1.5 bg-[#1F6F5F] text-white text-xs font-semibold rounded-lg hover:bg-emerald-800 transition"
+                      className="mt-4 px-4 py-2 bg-[#1b4965] hover:bg-[#153a52] text-white text-xs font-semibold rounded-lg shadow-sm transition"
                     >
                       Hapus semua filter
                     </button>

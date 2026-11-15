@@ -1,56 +1,74 @@
 import { useEffect, useState, useCallback } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { PanelLeftClose, PanelLeftOpen, RotateCcw } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import {
+  House,
+  Compass,
+  MapPin,
+  Sliders,
+  FileText,
+  LogOut,
+  BookOpen,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  RotateCcw,
+  Bell,
+  User,
+  X,
+} from "lucide-react";
+import logoSadar from "../../assets/figma/logo-sadar.svg";
 import "./stakeholder.css";
-import MapCanvas from "../../components/map/MapCanvas";
-import PrioritasPanel from "../../components/stakeholder/PrioritasPanel";
-import DiagnosisPanel from "../../components/stakeholder/DiagnosisPanel";
-import SekolahKeputusanPanel from "../../components/stakeholder/SekolahKeputusanPanel";
-import KandidatPanel from "../../components/stakeholder/KandidatPanel";
-import SimulasiPanel from "../../components/stakeholder/SimulasiPanel";
-import CompareModal from "../../components/ui/CompareModal";
-import { ErrorBox, InfoBox, Spinner } from "../../components/ui/kit";
+import D01DashboardView from "../../components/stakeholder/D01DashboardView";
+import D02DiagnosisView from "../../components/stakeholder/D02DiagnosisView";
+import D04KandidatView from "../../components/stakeholder/D04KandidatView";
+import D06SimulasiView from "../../components/stakeholder/D06SimulasiView";
+import D08MemoView from "../../components/stakeholder/D08MemoView";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useDataStore } from "../../store/useDataStore";
 import { useMapStore } from "../../store/useMapStore";
-import { BOGOR_BOUNDS } from "../../lib/bogorBoundary";
 
-const TABS = [
-  { id: "prioritas", label: "Prioritas" },
-  { id: "diagnosis", label: "Diagnosis" },
-  { id: "keputusan", label: "Keputusan" },
-  { id: "simulasi", label: "Simulasi & Lahan" },
+const MENU_ITEMS = [
+  { id: "ringkasan", label: "Ringkasan", icon: House, desc: "Pusat keputusan dan kesiapan data wilayah" },
+  { id: "diagnosis", label: "Diagnosis wilayah", icon: Compass, desc: "Ukur kebutuhan dan telaah wilayah" },
+  { id: "kandidat", label: "Kandidat lokasi", icon: MapPin, desc: "Bandingkan alternatif dan detail bukti kandidat" },
+  { id: "simulasi", label: "Simulasi what-if", icon: Sliders, desc: "Uji skenario pembangunan dan analisis dampak" },
+  { id: "memo", label: "Memo keputusan", icon: FileText, desc: "Ringkasan rekomendasi kebijakan yang dapat diaudit" },
 ];
 
-const LAYER_TOGGLES = [
-  ["mcdaLayer", "Kebutuhan kecamatan"],
-  ["showBlankSpots", "Blank spot"],
-  ["showCoverage", "Jangkauan 3 km"],
-  ["showCandidates", "Area kandidat"],
-  ["showSchools", "Titik sekolah"],
-];
+function BrandMark() {
+  const [failed, setFailed] = useState(false);
+
+  return (
+    <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center overflow-hidden rounded-[10px]">
+      {failed ? (
+        <span className="flex h-full w-full items-center justify-center bg-[#1b4965] text-white">
+          <House size={18} aria-hidden="true" />
+        </span>
+      ) : (
+        <img
+          src={logoSadar}
+          alt=""
+          width="34"
+          height="34"
+          onError={() => setFailed(true)}
+        />
+      )}
+    </span>
+  );
+}
 
 export default function StakeholderDashboard() {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
-  const { loaded, loading, error, loadPublic, loadCandidates, meta, ringkasan, kecamatan, candidates } = useDataStore();
-  const {
-    selectedWilayahId,
-    setSelectedWilayahId,
-    clearSelection,
-    flyToBounds,
-    activeLayers,
-    toggleLayer,
-    setLayer,
-    comparedSchools,
-    setIsCompareOpen,
-  } = useMapStore();
-  const [tab, setTab] = useState("prioritas");
-  const [simSubTab, setSimSubTab] = useState("simulasi"); // "simulasi" | "kandidat"
-  const [preset, setPreset] = useState(null);
-  const [candidateError, setCandidateError] = useState("");
-  const [panelOpen, setPanelOpen] = useState(true);
-  const selectedKecamatan = kecamatan.find((x) => x.id === String(selectedWilayahId));
+  const { loadPublic, loadCandidates } = useDataStore();
+  const { clearSelection } = useMapStore();
+
+  const [activeTab, setActiveTab] = useState("ringkasan");
+  const [targetSubTab, setTargetSubTab] = useState(null);
+  const [configuredScenario, setConfiguredScenario] = useState(null);
+  const [collapsed, setCollapsed] = useState(() => window.innerWidth < 1024);
+  const [searchQ, setSearchQ] = useState("");
+  const [panduanOpen, setPanduanOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,8 +76,8 @@ export default function StakeholderDashboard() {
       await loadPublic();
       try {
         if (!cancelled) await loadCandidates();
-      } catch (e) {
-        if (!cancelled) setCandidateError(e.message);
+      } catch (err) {
+        console.warn("Candidates load non-blocking error:", err);
       }
     })();
     return () => {
@@ -67,286 +85,287 @@ export default function StakeholderDashboard() {
     };
   }, [loadPublic, loadCandidates]);
 
-  // Sinkronisasi klik poligon / kandidat pada peta ke tab aktif
+  // Di layar kecil, sidebar otomatis menutup saat resize atau load
   useEffect(() => {
-    let prevWilayah = useMapStore.getState().selectedWilayahId;
-    let prevCandidate = useMapStore.getState().selectedCandidateId;
-    return useMapStore.subscribe((state) => {
-      if (state.selectedWilayahId !== prevWilayah) {
-        prevWilayah = state.selectedWilayahId;
-        if (state.selectedWilayahId) {
-          setPanelOpen(true);
-          setTab((curr) => (curr === "prioritas" ? "diagnosis" : curr));
-        }
-      }
-      if (state.selectedCandidateId !== prevCandidate) {
-        prevCandidate = state.selectedCandidateId;
-        if (state.selectedCandidateId) {
-          setPanelOpen(true);
-          setTab("simulasi");
-          setSimSubTab("kandidat");
-        }
-      }
-    });
+    const handleResize = () => {
+      if (window.innerWidth < 1024) setCollapsed(true);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const pilihWilayah = useCallback(
-    (id) => {
-      setSelectedWilayahId(id);
-      const k = useDataStore.getState().kecamatan.find((x) => x.id === String(id));
-      if (k && k.bbox) flyToBounds(k.bbox);
-    },
-    [setSelectedWilayahId, flyToBounds]
-  );
+  const handleNavigate = useCallback((tabId, subTabId = null, extraParams = null) => {
+    setActiveTab(tabId);
+    setTargetSubTab(subTabId);
+    if (extraParams) {
+      setConfiguredScenario(extraParams);
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
 
-  const resetPetaBogor = useCallback(() => {
+  const handleResetData = useCallback(() => {
     clearSelection();
-    const flat = BOGOR_BOUNDS.flat();
-    flyToBounds(flat);
-  }, [clearSelection, flyToBounds]);
-
-  const keSimulasi = (p) => {
-    if (p.id_wilayah) setSelectedWilayahId(p.id_wilayah);
-    setPreset({ ...p, nonce: Date.now() });
-    setSimSubTab("simulasi");
-    setTab("simulasi");
-  };
+    loadPublic();
+    loadCandidates();
+  }, [clearSelection, loadPublic, loadCandidates]);
 
   const handleLogout = () => {
     logout();
     navigate("/login");
   };
 
+  const hide = collapsed ? "sr-only" : "";
+
   return (
-    <div className={`sh-workspace ${panelOpen ? "panel-open" : "panel-closed"}`}>
-      {/* Peta selalu full-screen di latar belakang agar tidak pernah menyisakan ruang kosong saat panel ditutup */}
-      <main className="sh-map-stage">
-        <MapCanvas />
-      </main>
-
-      {/* Navigasi Mengambang Kiri Atas */}
-      <header className="sh-floating-header">
-        <div className="sh-brand">
-          <span className="sh-brand-dot" />
-          <div>
-            <h1 className="sh-brand-title">Dinas Pendidikan Bogor</h1>
-            <p className="sh-brand-sub">
-              {user?.nama || "Stakeholder"}
-              {meta ? ` · Data ${meta.tahun}` : ""}
-            </p>
-          </div>
-        </div>
-        <nav className="sh-header-actions" aria-label="Kontrol utama">
-          <button
-            onClick={() => setPanelOpen((o) => !o)}
-            className={`sh-pill-btn ${panelOpen ? "is-primary" : ""}`}
-            aria-expanded={panelOpen}
+    <div className="operator-shell h-screen bg-[#f6f7f5] p-3 text-[#173042] [font-family:'Public_Sans',system-ui,sans-serif] sm:p-6">
+      <div className="flex h-full min-h-0 overflow-hidden rounded-[20px] border-0 bg-[#f6f7f5] sm:rounded-[28px]">
+        {/* Sidebar Kiri Harmonized with Operator */}
+        <aside
+          className={`flex shrink-0 flex-col overflow-y-auto border-r border-[#e1e7dc] bg-[#f6f7f5] transition-[width] duration-200 motion-reduce:transition-none ${
+            collapsed ? "w-[76px]" : "w-[230px]"
+          }`}
+        >
+          {/* Logo & Toggle Header */}
+          <div
+            className={`flex pt-[22px] ${
+              collapsed ? "flex-col items-center gap-3" : "items-start justify-between px-[22px]"
+            }`}
           >
-            {panelOpen ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
-            <span>{panelOpen ? "Tutup Panel" : "Buka Panel"}</span>
-          </button>
-          {user?.role === "Operator" && (
-            <Link to="/operator/dataset" className="sh-pill-btn">
-              Dataset
-            </Link>
-          )}
-          <Link to="/peta" className="sh-pill-btn">
-            Peta Publik
-          </Link>
-          <button onClick={handleLogout} className="sh-pill-btn is-danger">
-            Keluar
-          </button>
-        </nav>
-      </header>
-
-      {/* Kontrol Lapisan Peta Mengambang Kanan Atas */}
-      <div className="sh-floating-layers">
-        <div className="sh-layer-group" role="group" aria-label="Lapisan peta">
-          <button
-            onClick={resetPetaBogor}
-            title="Reset tampilan peta ke seluruh wilayah Bogor"
-            className="sh-layer-btn inline-flex items-center gap-1.5"
-          >
-            <RotateCcw size={13} />
-            <span>Reset Peta</span>
-          </button>
-          {LAYER_TOGGLES.map(([key, label]) => (
-            <button
-              key={key}
-              aria-pressed={!!activeLayers[key]}
-              onClick={() => toggleLayer(key)}
-              className="sh-layer-btn"
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Panel Analisis Mengambang */}
-      <aside
-        className={`sh-panel ${panelOpen ? "is-open" : "is-closed"}`}
-        aria-label="Panel analisis keputusan"
-        inert={!panelOpen}
-      >
-        <div className="sh-tabs" role="tablist" aria-label="Menu analisis">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              role="tab"
-              aria-selected={tab === t.id}
-              onClick={() => setTab(t.id)}
-              className="sh-tab"
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="sh-content">
-          {ringkasan?.menggunakan_data_demo && (
-            <div className="mb-4">
-              <InfoBox tone="amber">
-                <strong>Data demo.</strong> Angka dan peta berasal dari dataset sintetis.
-              </InfoBox>
-            </div>
-          )}
-
-          <ErrorBox message={error || candidateError} />
-          {error && (
-            <button onClick={loadPublic} className="mt-2 text-xs font-semibold text-[#1F6F5F] hover:underline">
-              Muat ulang data
-            </button>
-          )}
-          {loading && !loaded && <Spinner label="Memuat data analisis wilayah & sekolah..." />}
-
-          {loaded && tab === "prioritas" && (
-            <PrioritasPanel
-              ringkasan={ringkasan}
-              onPilihWilayah={(id) => {
-                pilihWilayah(id);
-                setTab("diagnosis");
-              }}
-            />
-          )}
-
-          {loaded && tab === "diagnosis" && (
-            <DiagnosisPanel wilayahId={selectedWilayahId} onPilihWilayah={pilihWilayah} onSimulasi={keSimulasi} />
-          )}
-
-          {loaded && tab === "keputusan" && (
-            <SekolahKeputusanPanel
-              wilayahId={selectedWilayahId}
-              onPilihWilayah={(id) => {
-                pilihWilayah(id);
-                setTab("diagnosis");
-              }}
-              onSimulasi={keSimulasi}
-            />
-          )}
-
-          {loaded && tab === "simulasi" && (
-            <div>
-              <div className="sh-segmented mb-5" role="group" aria-label="Pilih mode simulasi atau kandidat lahan">
-                <button
-                  onClick={() => setSimSubTab("simulasi")}
-                  className={simSubTab === "simulasi" ? "is-active" : ""}
-                >
-                  Simulasi Intervensi
-                </button>
-                <button
-                  onClick={() => {
-                    setSimSubTab("kandidat");
-                    setLayer("showCandidates", true);
-                  }}
-                  className={simSubTab === "kandidat" ? "is-active" : ""}
-                >
-                  Kandidat Lahan ({candidates?.features?.length || 0})
-                </button>
-              </div>
-              {simSubTab === "simulasi" ? (
-                <SimulasiPanel
-                  key={`${preset?.nonce || "init"}-${selectedWilayahId || ""}`}
-                  preset={preset}
-                  wilayahId={selectedWilayahId}
-                />
-              ) : (
-                <KandidatPanel wilayahId={selectedWilayahId} onSimulasi={keSimulasi} />
-              )}
-            </div>
-          )}
-        </div>
-      </aside>
-
-      {/* Legenda Ringkas di Bawah Peta */}
-      <div className="sh-map-legend" aria-label="Legenda peta">
-        {selectedKecamatan && (
-          <div className="flex items-center gap-2 pr-3 border-r border-slate-300">
-            <span className="font-semibold text-slate-900">
-              Fokus: Kec. {selectedKecamatan.nama}
-            </span>
-            <button
-              onClick={resetPetaBogor}
-              className="text-xs font-semibold text-[#1F6F5F] hover:underline"
-            >
-              Semua Kecamatan
-            </button>
-          </div>
-        )}
-        {activeLayers.showSchools && (
-          <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 font-medium">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#0f766e] inline-block border border-white" />
-              SMP Negeri
-            </span>
-            <span className="inline-flex items-center gap-1.5 font-medium">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#d97706] inline-block border border-white" />
-              SMP Swasta
-            </span>
-            {!selectedKecamatan && (
-              <span className="inline-flex items-center gap-1.5 font-medium text-slate-500">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#1e293b] inline-block border border-white" />
-                Klaster Sekolah
+            <div className="flex items-center gap-2.5">
+              <BrandMark />
+              <span className={`text-base font-semibold leading-6 text-[#1b4965] ${hide}`}>
+                SADAR EDU
               </span>
-            )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setCollapsed((value) => !value)}
+              aria-expanded={!collapsed}
+              aria-label={collapsed ? "Buka sidebar" : "Tutup sidebar"}
+              className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-[#d7e1e8] bg-[#edf3f6] text-[#445665] transition-colors hover:bg-[#e1eaee] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f6f5f]"
+            >
+              {collapsed ? (
+                <ChevronRight size={18} aria-hidden="true" />
+              ) : (
+                <ChevronLeft size={18} aria-hidden="true" />
+              )}
+            </button>
           </div>
-        )}
-        {activeLayers.mcdaLayer && (
-          <div className="flex items-center gap-2.5 border-l border-slate-300 pl-3">
-            <span className="inline-flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-xs bg-[#dc2626] inline-block" />
-              Sangat Tinggi
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-xs bg-[#f97316] inline-block" />
-              Tinggi
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-xs bg-[#eab308] inline-block" />
-              Sedang
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-xs bg-[#10b981] inline-block" />
-              Rendah
-            </span>
-          </div>
-        )}
-        {comparedSchools.length > 0 && (
-          <button
-            onClick={() => setIsCompareOpen(true)}
-            className="bg-[#1F6F5F] text-white font-semibold px-3 py-1 rounded-lg hover:bg-[#175649] transition-colors text-xs"
+
+          {/* Label MENU */}
+          <p className={`mt-[26px] px-[22px] text-[11px] font-medium leading-4 text-[#445665] ${hide}`}>
+            MENU
+          </p>
+
+          {/* Navigation Items */}
+          <nav
+            aria-label="Menu pengambil kebijakan dinas"
+            className={`mt-3 flex flex-col gap-2 ${collapsed ? "px-3" : "px-5"}`}
           >
-            Bandingkan ({comparedSchools.length}/3)
-          </button>
-        )}
+            {MENU_ITEMS.map(({ id, label, icon: Icon, desc }) => {
+              const isActive = activeTab === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => handleNavigate(id)}
+                  title={collapsed ? label : desc}
+                  className={`relative flex h-[46px] items-center rounded-[10px] text-xs transition-all duration-200 ${
+                    collapsed ? "justify-center" : "gap-[13px] px-[14px]"
+                  } ${
+                    isActive
+                      ? "bg-[#25382e] text-white font-medium shadow-xs"
+                      : "text-[#445665] hover:bg-[#e8ede7] hover:translate-x-[2px] active:scale-[0.98]"
+                  } focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f6f5f]`}
+                >
+                  <Icon size={17} aria-hidden="true" className="shrink-0" />
+                  {!collapsed && <span className="truncate">{label}</span>}
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Footer Sidebar / AKUN */}
+          <div className={`mt-auto pb-4 pt-8 ${collapsed ? "px-3" : "px-5"}`}>
+            <p className={`px-0.5 text-[11px] font-medium leading-4 text-[#445665] ${hide}`}>AKUN</p>
+            <div className="my-3 h-px bg-[#d7e1e8]" />
+            <button
+              type="button"
+              onClick={handleLogout}
+              aria-label={collapsed ? "Keluar dari akun" : undefined}
+              className={`flex h-[46px] w-full cursor-pointer items-center rounded-lg border border-[#a12b31] bg-[#fff0f0] text-sm font-semibold text-[#a12b31] transition-all duration-150 hover:bg-[#ffe3e3] hover:shadow-xs active:scale-[0.98] ${
+                collapsed ? "justify-center" : "gap-3.5 px-[13px]"
+              } focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a12b31]`}
+            >
+              <LogOut size={20} aria-hidden="true" className="shrink-0" />
+              {!collapsed && <span>Keluar dari akun</span>}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPanduanOpen(true)}
+              title="Buka panduan analis"
+              className={`mt-3 flex h-10 w-full cursor-pointer items-center text-xs text-[#445665] hover:text-[#173042] ${
+                collapsed ? "justify-center" : "gap-2.5 px-3"
+              } focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f6f5f]`}
+            >
+              <BookOpen size={16} aria-hidden="true" className="shrink-0" />
+              {!collapsed && <span>Panduan analis</span>}
+            </button>
+          </div>
+        </aside>
+
+        {/* Kolom Konten Utama & Header */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          {/* Header Topbar Harmonized */}
+          <header className="flex h-[80px] shrink-0 items-center gap-3 border-b border-[#e1e7dc] bg-[#f6f7f5] px-4 sm:px-7">
+            {/* Search Box di sisi kiri sesuai Operator */}
+            <div className="relative mr-auto w-full max-w-[460px]">
+              <Search
+                size={18}
+                aria-hidden="true"
+                className="pointer-events-none absolute left-[14px] top-1/2 -translate-y-1/2 text-[#445665]"
+              />
+              <input
+                id="cari-menu-stakeholder"
+                type="search"
+                autoComplete="off"
+                placeholder="Cari menu, wilayah, skenario..."
+                value={searchQ}
+                onChange={(e) => setSearchQ(e.target.value)}
+                className="h-[48px] w-full rounded-[10px] border-0 bg-[#f8f9f6] pl-[44px] pr-3 text-xs placeholder:text-[#445665] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f6f5f]"
+              />
+            </div>
+
+            {/* Refresh / Perbarui Data Button */}
+            <button
+              type="button"
+              onClick={handleResetData}
+              title="Perbarui data dan reset pilihan peta"
+              className="flex h-[42px] w-[42px] cursor-pointer items-center justify-center rounded-full bg-[#f8f9f6] text-[#445665] transition-colors hover:bg-[#e8ede7] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f6f5f]"
+            >
+              <RotateCcw size={18} aria-hidden="true" />
+            </button>
+
+            {/* Notification Bell */}
+            <button
+              type="button"
+              title="Notifikasi analis"
+              className="flex h-[42px] w-[42px] cursor-pointer items-center justify-center rounded-full bg-[#f8f9f6] text-[#445665] transition-colors hover:bg-[#e8ede7] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f6f5f]"
+            >
+              <Bell size={18} aria-hidden="true" />
+            </button>
+
+            {/* User Profile Chip - 100% harmonized with Operator */}
+            <div className="flex h-[50px] items-center gap-3 rounded-[10px] border border-[#e1e7dc] bg-[#edf3f6] pl-2 pr-4">
+              <span
+                aria-hidden="true"
+                className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-[#1b4965] text-white"
+              >
+                <User size={18} />
+              </span>
+              <span className="hidden sm:block">
+                <span className="block text-xs font-semibold leading-[18px] text-[#173042]">
+                  {user?.nama ?? "Stakeholder Dinas"}
+                </span>
+                <span className="block text-[11px] font-medium leading-4 text-[#445665]">
+                  Ruang kerja internal
+                </span>
+              </span>
+            </div>
+          </header>
+
+          {/* Area Konten Scrollable */}
+          <main data-lenis-prevent className="min-h-0 flex-1 overflow-y-auto bg-[#f6f7f5]">
+            <div key={activeTab} className="animate-page-enter p-4 sm:p-7 space-y-6">
+              {activeTab === "ringkasan" && <D01DashboardView onNavigate={handleNavigate} />}
+
+              {activeTab === "diagnosis" && (
+                <D02DiagnosisView
+                  onNavigate={handleNavigate}
+                  initialSubTab={targetSubTab || "ukur"}
+                />
+              )}
+
+              {activeTab === "kandidat" && (
+                <D04KandidatView
+                  onNavigate={handleNavigate}
+                  initialSubTab={targetSubTab || "alternatif"}
+                />
+              )}
+
+              {activeTab === "simulasi" && (
+                <D06SimulasiView
+                  onNavigate={handleNavigate}
+                  initialSubTab={targetSubTab || "uji"}
+                  configuredScenario={configuredScenario}
+                />
+              )}
+
+              {activeTab === "memo" && <D08MemoView onNavigate={handleNavigate} />}
+            </div>
+          </main>
+        </div>
       </div>
 
-      {kecamatan.length === 0 && loaded && (
-        <div className="absolute top-20 right-4 z-10 max-w-xs">
-          <InfoBox tone="amber">Belum ada batas kecamatan. Minta Operator mengunggah dataset wilayah.</InfoBox>
+      {/* Modal Dialog Panduan Analis */}
+      {panduanOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 animate-modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setPanduanOpen(false);
+          }}
+        >
+          <div
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            className="animate-modal-content max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 text-[#173042] shadow-xl outline-none"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-[#e1e7dc]">
+              <div className="flex items-center gap-2">
+                <BookOpen size={18} className="text-[#1b4965]" />
+                <h2 className="text-lg font-bold text-[#173042]">Panduan Analis Pengambil Kebijakan</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPanduanOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-[#445665] hover:bg-[#edf3f6] hover:text-[#173042]"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="py-4 space-y-3.5 text-xs text-[#445665] leading-relaxed">
+              <p>
+                SADAR EDU mengadopsi prinsip <strong>Desktop Decision Flow</strong> berbasis bukti (evidence-based planning). Sistem berfungsi sebagai instrumen telaah dan simulasi what-if, bukan penentu keputusan otomatis.
+              </p>
+              <div className="space-y-2 p-3.5 bg-[#f6f7f5] rounded-xl border border-[#d7e1e8]">
+                <strong className="text-[#173042] block font-semibold text-xs">Alur 5 Langkah Telaah Kebijakan:</strong>
+                <ol className="list-decimal list-inside space-y-1.5 text-xs text-[#445665]">
+                  <li><strong>Ringkasan:</strong> Pantau gap kapasitas dan defisit akses wilayah secara makro.</li>
+                  <li><strong>Diagnosis:</strong> Ukur kesenjangan daya tampung vs proyeksi penduduk usia SMP 5 tahun ke depan.</li>
+                  <li><strong>Kandidat:</strong> Bandingkan lokasi alternatif lahan potensial dengan status verifikasi fisik.</li>
+                  <li><strong>Simulasi What-If:</strong> Uji skenario intervensi USB/RKB pada berbagai asumsi pertumbuhan.</li>
+                  <li><strong>Memo Keputusan:</strong> Susun draf rekomendasi kebijakan formal yang siap diaudit.</li>
+                </ol>
+              </div>
+              <p>
+                Seluruh skenario dan draf memo yang dibuat tidak mengubah data master kependudukan maupun dataset sekolah operasional.
+              </p>
+            </div>
+
+            <div className="pt-3 border-t border-[#e1e7dc] flex justify-end">
+              <button
+                type="button"
+                onClick={() => setPanduanOpen(false)}
+                className="inline-flex h-[42px] cursor-pointer items-center justify-center rounded-lg bg-[#253c30] px-5 text-sm font-semibold text-white transition-colors hover:brightness-95"
+              >
+                Mengerti
+              </button>
+            </div>
+          </div>
         </div>
       )}
-      <CompareModal />
     </div>
   );
 }
