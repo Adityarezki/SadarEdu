@@ -29,6 +29,13 @@ npm run dev              # Berjalan di http://localhost:5173
 
 ---
 
+## 🗄️ Panduan Koneksi Database (pgAdmin & PostGIS)
+
+Bagi kolaborator atau rekan tim yang baru melakukan *clone* dan ingin menghubungkan database lokal:
+👉 [**Panduan Step-by-Step Setup Database di pgAdmin 4**](PANDUAN_SETUP_DATABASE_PGADMIN.md)
+
+---
+
 ## 🧭 Panduan Penggunaan Operator
 
 Panduan lengkap mengenai:
