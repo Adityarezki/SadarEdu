@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ============================================================================
  * HALAMAN: Kelola Dataset & Pembaruan Data Sekolah (Operator)
  * ============================================================================
@@ -459,7 +459,7 @@ export default function OperatorDataset() {
       {actionMessage && (
         <div
           role="status"
-          className={`flex items-center justify-between rounded-lg px-4 py-3 text-xs font-medium leading-5 ${
+          className={`animate-alert-enter flex items-center justify-between rounded-lg px-4 py-3 text-xs font-medium leading-5 ${
             actionMessage.type === 'success'
               ? 'bg-[#e8f3f0] text-[#126552]'
               : 'bg-[#fff0f0] text-[#a12b31]'
@@ -481,7 +481,7 @@ export default function OperatorDataset() {
 
       {/* ================= TAB 1: RIWAYAT & VERSI DATASET ================= */}
       {activeTab === 'versions' && (
-        <div className="flex flex-col gap-5">
+        <div key="versions" className="animate-page-enter flex flex-col gap-5">
           {/* Petunjuk Multi-Versi */}
           <div className="rounded-lg border border-[#c2d7e5] bg-[#edf5f8] p-4 text-xs text-[#1b4965]">
             <p className="font-semibold">💡 Pengelolaan Multi-Versi Dataset (Contoh: 2026, 2028)</p>
@@ -694,7 +694,7 @@ export default function OperatorDataset() {
 
       {/* ================= TAB 2: EDIT CEPAT SATUAN SEKOLAH ================= */}
       {activeTab === 'single-edit' && (
-        <div className="flex flex-col gap-5">
+        <div key="single-edit" className="animate-page-enter flex flex-col gap-5">
           {/* Card Penjelasan Fitur */}
           <div className="rounded-lg border border-[#c2d7e5] bg-[#edf5f8] p-4 text-xs text-[#1b4965]">
             <p className="font-semibold">✏️ Pembaruan Satuan Sekolah (Single School Edit)</p>

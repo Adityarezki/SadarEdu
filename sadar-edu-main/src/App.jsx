@@ -18,6 +18,7 @@ const OperatorRepair = lazy(() => import("./pages/operator/OperatorRepair"));
 const OperatorReview = lazy(() => import("./pages/operator/OperatorReview"));
 const OperatorStatus = lazy(() => import("./pages/operator/OperatorStatus"));
 const OperatorIndicator = lazy(() => import("./pages/operator/OperatorIndicator"));
+const OperatorUsers = lazy(() => import("./pages/operator/OperatorUsers"));
 
 const AwwwardsLoader = lazy(() => import("./components/ui/AwwwardsLoader"));
 const PageTransition = lazy(() => import("./components/ui/PageTransition"));
@@ -28,8 +29,8 @@ export default function App() {
 
 function AppRoutes() {
   const { pathname } = useLocation();
-  const isDirectPage = /^\/(peta|login)\/?$/.test(pathname) || /^\/operator(?:\/|$)/.test(pathname);
-  // Peta dan autentikasi harus langsung siap digunakan tanpa intro video.
+  const isDirectPage = /^\/(peta|login)\/?$/.test(pathname) || /^\/(operator|stakeholder)(?:\/|$)/.test(pathname);
+  // Peta, autentikasi, serta dashboard pengelola (Operator & Stakeholder) langsung siap tanpa intro video.
   const [isInitialLoading, setIsInitialLoading] = useState(() => !isDirectPage);
 
   return (
@@ -73,7 +74,14 @@ function AppRoutes() {
           {/* FLOW OPERATOR (RUTE RUANG KERJA & ALUR AUDIT DATASET) */}
           {/* URL lama tetap bekerja, tetapi seluruh peran memakai satu formulir autentikasi. */}
           <Route path="/operator/login" element={<Navigate to="/login" replace />} />
-          <Route path="/operator" element={<OperatorLayout />}>
+          <Route
+            path="/operator"
+            element={
+              <RequireRole roles={["Operator"]}>
+                <OperatorLayout />
+              </RequireRole>
+            }
+          >
             <Route index element={<Navigate to="/operator/dashboard" replace />} />
             <Route path="dashboard" element={<OperatorDashboard />} />
             <Route path="dataset" element={<OperatorDataset />} />
@@ -84,6 +92,7 @@ function AppRoutes() {
             <Route path="pengajuan/status" element={<OperatorStatus />} />
             <Route path="status" element={<OperatorStatus />} />
             <Route path="indikator" element={<OperatorIndicator />} />
+            <Route path="pengguna" element={<OperatorUsers />} />
           </Route>
 
           {/* FALLBACK 404 */}

@@ -1,4 +1,4 @@
-﻿// Panjang NPSN (Nomor Pokok Sekolah Nasional) adalah 8 digit.
+// Panjang NPSN (Nomor Pokok Sekolah Nasional) adalah 8 digit.
 export const NPSN_LENGTH = 8;
 
 // Kolom skema SADAR EDU yang harus dicocokkan dengan kolom berkas sumber.

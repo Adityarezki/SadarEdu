@@ -1,4 +1,4 @@
-﻿// Membaca berkas XLSX menjadi tabel teks dengan bentuk yang sama seperti parseCsv:
+// Membaca berkas XLSX menjadi tabel teks dengan bentuk yang sama seperti parseCsv:
 // { headers, rows }. Hanya lembar pertama yang dibaca.
 
 const cellToText = (value) => {

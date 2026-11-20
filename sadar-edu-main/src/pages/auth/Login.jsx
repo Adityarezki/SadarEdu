@@ -108,7 +108,7 @@ export default function Login() {
       setErrorMessage(
         error?.status === 0
           ? 'Server belum dapat dijangkau. Periksa koneksi lalu coba lagi.'
-          : 'Email atau kata sandi tidak sesuai. Periksa kembali akun Anda.',
+          : error?.message || 'Email atau kata sandi tidak sesuai. Periksa kembali akun Anda.',
       );
     }
   };
@@ -137,6 +137,24 @@ export default function Login() {
           <p className="login-intro">
             Satu akses untuk operator data dan Dinas Pendidikan. Ruang kerja akan disesuaikan otomatis berdasarkan akun Anda.
           </p>
+
+          <div className="flex items-center gap-2 my-3 flex-wrap">
+            <span className="text-[11px] text-[#445665] font-medium">Akun Demo Cepat:</span>
+            <button
+              type="button"
+              onClick={() => { setEmail('operator@sadaredu.id'); setPassword('operator123'); setErrorMessage(''); }}
+              className="text-[11px] font-semibold text-[#1b4965] bg-[#edf3f6] hover:bg-[#d7e1e8] px-2.5 py-1 rounded-md transition cursor-pointer"
+            >
+              Operator
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEmail('stakeholder@sadaredu.id'); setPassword('stakeholder123'); setErrorMessage(''); }}
+              className="text-[11px] font-semibold text-[#1b4965] bg-[#edf3f6] hover:bg-[#d7e1e8] px-2.5 py-1 rounded-md transition cursor-pointer"
+            >
+              Stakeholder
+            </button>
+          </div>
 
           <form id="login-form" className="login-form" onSubmit={handleSubmit} aria-busy={isLoading}>
             <div className="login-field">
@@ -189,7 +207,7 @@ export default function Login() {
             </div>
 
             <p id="login-help" className="login-help">Lupa kata sandi? Hubungi administrator Dinas Pendidikan.</p>
-            {errorMessage && <p id="login-error" className="login-error" role="alert">{errorMessage}</p>}
+            {errorMessage && <p id="login-error" className="login-error animate-alert-enter" role="alert">{errorMessage}</p>}
 
             <button className="login-submit" type="submit" disabled={isLoading}>
               <span>{isLoading ? 'Memeriksa akun…' : 'Masuk ke ruang kerja'}</span>

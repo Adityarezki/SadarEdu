@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   Bell,
@@ -28,6 +28,7 @@ const NAV_ITEMS = [
   { label: 'Validasi data', title: 'Validasi data', to: '/operator/validasi', icon: ShieldCheck },
   { label: 'Indikator & metadata', title: 'Indikator & metadata', to: '/operator/indikator', icon: ChartColumn },
   { label: 'Status pengajuan', title: 'Review pengajuan', to: '/operator/pengajuan', icon: Clock },
+  { label: 'Kelola akun staf', title: 'Akun staf', to: '/operator/pengguna', icon: User },
 ];
 
 // Judul bar atas untuk halaman yang tidak punya item menu sendiri.
@@ -280,7 +281,7 @@ export default function OperatorLayout() {
               type="button"
               onClick={handleLogout}
               aria-label={collapsed ? 'Keluar dari akun' : undefined}
-              className={`flex h-[46px] w-full cursor-pointer items-center rounded-lg border border-[#a12b31] bg-[#fff0f0] text-sm font-semibold text-[#a12b31] transition-colors hover:bg-[#ffe3e3] active:bg-[#ffd6d6] ${
+              className={`flex h-[46px] w-full cursor-pointer items-center rounded-lg border border-[#a12b31] bg-[#fff0f0] text-sm font-semibold text-[#a12b31] transition-all duration-150 hover:bg-[#ffe3e3] hover:shadow-xs active:scale-[0.98] ${
                 collapsed ? 'justify-center' : 'gap-3.5 px-[13px]'
               } ${FOCUS}`}
             >
@@ -345,7 +346,7 @@ export default function OperatorLayout() {
               {searchOpen && (
                 <div
                   id="hasil-pencarian-operator"
-                  className="absolute left-0 right-auto top-[48px] z-40 max-h-[min(70vh,460px)] w-full overflow-y-auto rounded-xl border border-[#d7e1e8] bg-white p-2 shadow-[0_12px_30px_rgba(10,36,51,0.16)] md:left-auto md:right-0 md:w-[min(380px,calc(100vw-32px))]"
+                  className="animate-dropdown absolute left-0 right-auto top-[48px] z-40 max-h-[min(70vh,460px)] w-full overflow-y-auto rounded-xl border border-[#d7e1e8] bg-white p-2 shadow-[0_12px_30px_rgba(10,36,51,0.16)] md:left-auto md:right-0 md:w-[min(380px,calc(100vw-32px))]"
                 >
                   {!searchQuery.trim() ? (
                     <p className="px-3 py-4 text-xs text-[#445665]">
@@ -443,7 +444,7 @@ export default function OperatorLayout() {
               {notificationsOpen && (
                 <div
                   id="notifikasi-operator"
-                  className="absolute right-0 top-[50px] z-40 w-[min(360px,calc(100vw-32px))] rounded-xl border border-[#d7e1e8] bg-white p-3 shadow-[0_12px_30px_rgba(10,36,51,0.16)]"
+                  className="animate-dropdown absolute right-0 top-[50px] z-40 w-[min(360px,calc(100vw-32px))] rounded-xl border border-[#d7e1e8] bg-white p-3 shadow-[0_12px_30px_rgba(10,36,51,0.16)]"
                 >
                   <div className="flex items-center justify-between gap-3 px-1 pb-2">
                     <h2 className="text-sm font-semibold">Notifikasi aktivitas</h2>
@@ -487,7 +488,7 @@ export default function OperatorLayout() {
               )}
             </div>
 
-            <div className="flex h-[50px] items-center gap-3 rounded-[10px] bg-[#edf3f6] pl-2 pr-4">
+            <div className="flex h-[50px] items-center gap-3 rounded-[10px] border border-[#e1e7dc] bg-[#edf3f6] pl-2 pr-4">
               <span
                 aria-hidden="true"
                 className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-[#1b4965] text-white"
@@ -504,7 +505,9 @@ export default function OperatorLayout() {
           </header>
 
           <main data-lenis-prevent className="min-h-0 flex-1 overflow-y-auto bg-[#f9fafb]">
-            <Outlet />
+            <div key={pathname} className="animate-page-enter">
+              <Outlet />
+            </div>
           </main>
         </div>
       </div>
